@@ -74,14 +74,10 @@ CREATE TABLE IF NOT EXISTS readings (
         CHECK (status IN ('pending', 'approved', 'rejected', 'requires_review')),
     submitted_by_telegram_id BIGINT,
     recognized_meter_number TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (meter_id, billing_year, billing_month, status)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Allow re-submissions: unique only for approved readings per meter/month
-DROP INDEX IF EXISTS readings_meter_id_billing_year_billing_month_status_key;
-ALTER TABLE readings DROP CONSTRAINT IF EXISTS readings_meter_id_billing_year_billing_month_status_key;
-
+-- One approved reading per meter per billing month
 CREATE UNIQUE INDEX IF NOT EXISTS uq_readings_approved_per_month
     ON readings (meter_id, billing_year, billing_month)
     WHERE status = 'approved';
