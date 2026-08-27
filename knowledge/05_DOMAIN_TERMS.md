@@ -1,0 +1,1 @@
+> **Archived.** Glossary is canonical in [04_BUSINESS_CONTEXT.md](./04_BUSINESS_CONTEXT.md) (Glossary section). Historical snapshot: [Archive/knowledge-legacy/05_DOMAIN_TERMS.md](./Archive/knowledge-legacy/05_DOMAIN_TERMS.md).

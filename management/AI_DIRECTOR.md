@@ -198,6 +198,8 @@ START: New request or triage tick
 
 Order **highest → lowest**. Do not skip a higher open item for a lower one without documenting why (blocker or human override).
 
+**Vision gate (`VISION.md` / `AGENTS.md` § SKY ERP Vision):** every prioritized feature must improve Sales, Procurement, Logistics, Warehouse, Finance, Documents, Analytics, or AI Automation. If it does not improve the ERP, do not prioritize it.
+
 | Rank | Class | Examples |
 | --- | ---: | --- |
 | P0 | Safety / integrity | XSS, secret exposure, open destructive paths, payment/invoice corruption, cross-company leakage **when fixable without forbidden auth/RLS leaps** |
@@ -294,6 +296,8 @@ Full matrix: `APPROVAL_MATRIX.md`.
 **Daily anti-patterns:** starting three features at once; marking remote-unapplied work “done”; skipping QA because build passed once yesterday; stopping after logs/reproduction; asking the human to choose the next technical step or read console output; repeating the same approval ask.
 
 **Autonomous loop:** For approved local work, continue Pattern F (and Pattern E for defects) until DoD or a real approval gate. Cap at 10 fix/validate cycles, then one blocker report.
+
+**Continuous Development (`AGENTS.md`):** After each completed task — verify end-to-end, scan the affected module for related defects, fix if found, re-validate, then take the next highest-priority backlog/sprint/bug item. Stop only when no actionable work remains or human approval is required.
 
 ---
 
@@ -436,33 +440,34 @@ Director → AI Engineer + Backend → Security (prompt/PII/upload) → QA
   → Human before live OpenAI in audits or new providers
 ```
 
-### Pattern E — Autonomous Defect Resolution (runtime)
+### Pattern E — Autonomous Bug Resolution
 
-Authority: `AGENTS.md` § Autonomous Development Loop (Runtime defects). Do not invent a second Runtime, Director, queue, or orchestration system.
+Authority: `AGENTS.md` § Autonomous Development Loop → Autonomous Bug Resolution.
+Triggers: runtime error · TypeScript error · build error · lint error · failed user action.
+Do not invent a second Runtime, Director, queue, or orchestration system.
 
 ```text
-Human symptom only
-  → Director intake (no log-reading requests to human)
-  → Backend Engineer (default) or Frontend if purely UI
-       inspect full path · exact failing function/input
-       root-cause fix · remove temp diagnostics · focused regression test
-  → QA Engineer (lint/tsc/build + regression evidence)
-  → Reviewer verification (Director quality review / DoD + Quality Gates)
-  → Single final human Review report
+Reproduce
+  → root cause
+  → implement fix
+  → validate: pnpm build · pnpm exec tsc --noEmit · reproduce original workflow
+  → repeat until the issue disappears
+  → QA / Reviewer
+  → single final human Review
 ```
 
-**Not completion:** diagnosis alone · adding logging · reproduction alone · stack-trace location alone.
+**Assignment:** Backend Engineer (server/domain) or Frontend Engineer (pure UI).
 
-**Director must:**
+**Hard rules:**
 
-- own the defect until fixed and validated, or until an approval gate blocks progress;
-- continue automatically through intake → reproduction → root cause → fix → regression → gates → reviewer → human Review;
-- not ask the human to inspect console/intermediate logs;
-- not stop after intermediate discovery;
-- not generate repeated diagnostic prompts for the human;
-- consolidate specialist work into one final report.
+- Do not stop after diagnostics.
+- Do not ask the user to investigate logs.
+- The user is never responsible for debugging.
+- Continue autonomously until fixed, unless: remote infrastructure approval, production migration apply, missing secrets, or deployment approval.
 
-**Director may stop only for:** validated fix ready for human Review; or explicit human approval required for remote DB writes, migrations, production deployment, external services, secret/environment changes, or destructive operations. All existing approval gates (§8, `APPROVAL_MATRIX.md`) remain in force.
+**Root Cause (`AGENTS.md`):** never patch symptoms; fix the root cause; if the same class can recur elsewhere, fix the entire class.
+
+**Not completion:** diagnosis alone · adding logging · reproduction alone · stack-trace location alone · symptom-only patches.
 
 ### Pattern F — Autonomous Development Loop (all approved local tasks)
 
@@ -486,7 +491,9 @@ Human business task or visible defect
 
 **Gated stop → one consolidated approval request** (never spam the same ask): exact action · target environment · files/SQL · expected effect · risk · rollback · verification.
 
-**Product-first:** prefer working ERP screens and real defects over new AI infrastructure.
+**SKY ERP Vision (`VISION.md`):** only prioritize work that improves Sales, Procurement, Logistics, Warehouse, Finance, Documents, Analytics, or AI Automation.
+
+**Business First (`AGENTS.md`):** data integrity → business workflows → automation → performance → UI polish → refactoring. Never polish an unfinished workflow. Prefer working ERP screens and real defects over new AI infrastructure.
 
 **Pending products INSERT:** `20260805110000_products_insert_policy.sql` stays prepared only until explicit DB approval. Marked development-only; replace with authenticated company-scoped RLS before production.
 
@@ -506,6 +513,8 @@ For **all** autonomous-loop work (features and defects), the human receives **on
 8. **One manual verification sequence**  
 
 Do not ask the human to read terminal output, manage specialist handoffs, or choose the next technical step.
+
+**User Time Protection (`AGENTS.md`):** minimize user involvement. If the Director/specialists can investigate, search, reproduce, patch, test, or verify with repo access, they must — never ask the user to manually inspect code or logs.
 
 When packaging a gated approval request, include: exact action, target environment, exact files or SQL, expected effect, risk, rollback, verification method.
 

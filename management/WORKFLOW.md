@@ -119,6 +119,12 @@ When uncertain, treat as medium.
 | No feature marked complete without QA evidence |
 | `AGENTS.md` always wins on conflict |
 | Runtime defects and approved local feature work follow `AGENTS.md` § Autonomous Development Loop (Director-owned through DoD or gated stop; Pattern F in `AI_DIRECTOR.md`) |
+| Bugs (runtime / tsc / build / lint / failed user action) follow Autonomous Bug Resolution: reproduce → root cause → fix → validate → repeat; user never debugs |
+| User Time Protection: if the AI can investigate/search/reproduce/patch/test/verify, it must; never ask the user to inspect code or logs when access exists |
+| Continuous Development: after each completed task, E2E verify, scan module for related defects, fix, validate, then next highest-priority task |
+| Business First: data integrity → workflows → automation → performance → UI polish → refactoring; never polish unfinished workflows |
+| SKY ERP Vision (`VISION.md`): prioritize only work that improves Sales, Procurement, Logistics, Warehouse, Finance, Documents, Analytics, or AI Automation |
+| Root Cause: never patch symptoms; fix root cause; fix the entire bug class when it can recur elsewhere |
 | Do not ask the human to read intermediate logs or choose the next technical step |
 | Cap implementation–validation retries at 10; then one blocker report |
 | Temporary public INSERT RLS policies are development-only and need explicit DB approval + future company-scoped replacement |

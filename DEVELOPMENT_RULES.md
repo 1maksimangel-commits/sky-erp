@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [knowledge/01_ENGINEERING_POLICY.md](./knowledge/01_ENGINEERING_POLICY.md) and [knowledge/Development/CodingStandards.md](./knowledge/Development/CodingStandards.md). Snapshot: [knowledge/Archive/root/DEVELOPMENT_RULES.md](./knowledge/Archive/root/DEVELOPMENT_RULES.md).

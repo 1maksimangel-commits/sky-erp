@@ -18,6 +18,25 @@ Never sacrifice data integrity for convenience.
 
 ---
 
+# SKY ERP Vision
+
+Canonical product vision: `VISION.md`.
+
+Every feature must improve one of:
+
+- Sales
+- Procurement
+- Logistics
+- Warehouse
+- Finance
+- Documents
+- Analytics
+- AI Automation
+
+If a task does not improve the ERP, do not prioritize it.
+
+---
+
 # Workspace
 
 Only work inside this repository.
@@ -1807,6 +1826,9 @@ Before starting any implementation task, read:
 
 # AI Engineering Department
 
+**Autonomous Development Loop is ENABLED** (see § Autonomous Development Loop below).
+It is the default operating mode for approved local development tasks and runtime defects.
+
 Before medium or large implementation tasks, read:
 
 1. management/README.md
@@ -1834,6 +1856,57 @@ AI exists to remove work from the user, not to add new workflows.
 
 The best interface is the one that requires the least explanation.
 
+# User Time Protection
+
+The AI should optimize for minimizing user involvement.
+
+If the AI can investigate, search code, reproduce, patch, test, or verify something itself, it **MUST** do so.
+
+Never ask the user to manually inspect code or logs when the AI has sufficient access.
+
+The user is never responsible for debugging when the AI can reach the same evidence.
+
+# Continuous Development
+
+After every completed task:
+
+1. verify the feature end-to-end;
+2. scan the affected module for related defects;
+3. fix them if found;
+4. run validation;
+5. continue with the next highest priority task.
+
+Only stop when:
+
+- no actionable work remains;
+- or explicit human approval is required.
+
+Priority for “next task” comes from `management/BACKLOG.md`, `management/CURRENT_SPRINT.md`, `management/KNOWN_BUGS.md`, and AI Director priority rules.
+All Continuous Development work still obeys approval gates, User Time Protection, and Autonomous Bug Resolution.
+
+# Business First
+
+Always prioritize business functionality over UI polish.
+
+Order:
+
+1. Data integrity
+2. Business workflows
+3. Automation
+4. Performance
+5. UI polish
+6. Refactoring
+
+Never spend time polishing an unfinished workflow.
+
+# Root Cause
+
+Never patch symptoms.
+
+Always locate and fix the root cause.
+
+If the same class of bug can occur elsewhere, fix the entire class.
+
 # Autonomous Development Loop
 
 Mandatory for approved local development tasks and runtime defects.
@@ -1844,7 +1917,7 @@ Reuse: AI Director, Technical Director function (Chief Architect + Solution Arch
 ## Human input
 
 The human reports only a business task or visible defect.
-The AI Director owns the work through completion without asking the human to inspect intermediate logs or choose the next technical step.
+The AI Director owns the work through completion. Obey § User Time Protection at every step.
 
 ## Execution cycle
 
@@ -1920,9 +1993,10 @@ Return one consolidated approval request: exact action, target environment, exac
 
 ## Product-first rule
 
-Prioritize working SKY ERP business functionality.
+Obey § Business First (data integrity → workflows → automation → performance → UI polish → refactoring).
 Do not create additional AI infrastructure unless a confirmed missing dependency makes the requested business workflow impossible.
 Prefer completing existing screens, fixing real user defects, reducing manual input, reusing existing entities/components, and one simple workflow over multiple complex screens.
+Never polish an unfinished workflow.
 
 ## Definition of Done
 
@@ -1952,10 +2026,36 @@ Present only:
 - approval required, if any;
 - one manual verification sequence.
 
-## Runtime defects
+## Autonomous Bug Resolution
 
-Runtime defects remain assigned to **Backend Engineer** (server/domain) or **Frontend Engineer** (pure UI). No separate Debug Engineer role.
-Detail: `management/AI_DIRECTOR.md`, `management/AI_TEAM.md`, `management/roles/03_BACKEND_ENGINEER.md`, `management/roles/07_QA_ENGINEER.md`.
+Whenever a runtime error, TypeScript error, build error, lint error, or failed user action appears, the AI **MUST**:
+
+1. reproduce the issue;
+2. identify the root cause (obey § Root Cause — never symptom-only patches);
+3. implement the fix (and the entire bug class if it can recur elsewhere);
+4. validate:
+   - `pnpm build`
+   - `pnpm exec tsc --noEmit`
+   - reproduce the original workflow
+5. repeat until the issue disappears.
+
+Rules:
+
+- Do not stop after diagnostics.
+- Do not ask the user to investigate logs.
+- The user is never responsible for debugging.
+
+Only stop if:
+
+- remote infrastructure approval is required;
+- a production database migration must be applied;
+- secrets are missing;
+- deployment approval is required.
+
+Otherwise continue autonomously (within the 10-cycle retry limit above).
+
+Assignment: **Backend Engineer** (server/domain) or **Frontend Engineer** (pure UI). No separate Debug Engineer role.
+Detail: `management/AI_DIRECTOR.md` Pattern E, `management/AI_TEAM.md`, `management/roles/03_BACKEND_ENGINEER.md`, `management/roles/07_QA_ENGINEER.md`.
 
 ## Pending products INSERT policy (safety note)
 

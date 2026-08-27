@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [Modules/Companies.md](./Modules/Companies.md) and [Modules/Counterparties.md](./Modules/Counterparties.md). Snapshot: [Archive/knowledge-legacy/08_COMPANIES_AND_COUNTERPARTIES.md](./Archive/knowledge-legacy/08_COMPANIES_AND_COUNTERPARTIES.md).

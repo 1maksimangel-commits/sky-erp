@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [../knowledge/03_DATABASE_AND_MIGRATIONS.md](../knowledge/03_DATABASE_AND_MIGRATIONS.md). Snapshot: [../knowledge/Archive/docs/DATABASE_GUIDELINES.md](../knowledge/Archive/docs/DATABASE_GUIDELINES.md).

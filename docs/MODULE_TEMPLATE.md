@@ -1,0 +1,1 @@
+> **Archived.** Module template snapshot: [../knowledge/Archive/docs/MODULE_TEMPLATE.md](../knowledge/Archive/docs/MODULE_TEMPLATE.md). Use [../knowledge/Modules/](../knowledge/Modules/) for module docs and [../knowledge/01_ENGINEERING_POLICY.md](../knowledge/01_ENGINEERING_POLICY.md) for workflow.

@@ -1,0 +1,93 @@
+import { createClient } from "@/lib/supabase/server";
+import { getBusinessCaseIdForContract } from "@/lib/contracts/relations";
+import type { ContractDocument } from "@/lib/contracts/document-types";
+import { filterOwnedDocumentsForSigning } from "@/lib/documents/signed-url-auth";
+import { assertCan } from "@/lib/platform/permissions";
+
+export type { ContractDocument } from "@/lib/contracts/document-types";
+export { DOCUMENT_CATEGORIES } from "@/lib/contracts/document-types";
+export type { DocumentCategory } from "@/lib/contracts/document-types";
+
+export type ContractDocumentsResult =
+  | { data: ContractDocument[]; error: null }
+  | { data: null; error: string };
+
+export async function getContractDocuments(
+  contractNumber: string,
+  contractId?: string | null
+): Promise<ContractDocumentsResult> {
+  const supabase = await createClient();
+
+  if (contractId) {
+    const byContract = await supabase
+      .from("documents")
+      .select(
+        "id, business_case_id, title, document_type, storage_path, mime_type, uploaded_at, company_id"
+      )
+      .eq("contract_id", contractId)
+      .order("uploaded_at", { ascending: false, nullsFirst: false });
+
+    if (!byContract.error && (byContract.data?.length ?? 0) > 0) {
+      return { data: (byContract.data ?? []) as ContractDocument[], error: null };
+    }
+  }
+
+  const businessCaseId = await getBusinessCaseIdForContract(
+    contractNumber,
+    contractId
+  );
+
+  if (!businessCaseId) {
+    return { data: [], error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select(
+      "id, business_case_id, title, document_type, storage_path, mime_type, uploaded_at, company_id"
+    )
+    .eq("business_case_id", businessCaseId)
+    .order("uploaded_at", { ascending: false, nullsFirst: false });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as ContractDocument[], error: null };
+}
+
+export async function getDocumentDownloadUrls(
+  documents: ContractDocument[]
+): Promise<Record<string, string>> {
+  if (!documents.length) {
+    return {};
+  }
+
+  if (assertCan("documents.read")) {
+    return {};
+  }
+
+  const owned = filterOwnedDocumentsForSigning(documents);
+  if (!owned.length) {
+    return {};
+  }
+
+  const supabase = await createClient();
+  const entries = await Promise.all(
+    owned.map(async (document) => {
+      const { data, error } = await supabase.storage
+        .from("documents")
+        .createSignedUrl(document.storage_path, 60 * 60);
+
+      if (error || !data?.signedUrl) {
+        return [document.id, ""] as const;
+      }
+
+      return [document.id, data.signedUrl] as const;
+    })
+  );
+
+  return Object.fromEntries(
+    entries.filter(([, url]) => url).map(([id, url]) => [id, url])
+  );
+}

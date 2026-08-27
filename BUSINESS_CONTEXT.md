@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [knowledge/04_BUSINESS_CONTEXT.md](./knowledge/04_BUSINESS_CONTEXT.md). Snapshot: [knowledge/Archive/root/BUSINESS_CONTEXT.md](./knowledge/Archive/root/BUSINESS_CONTEXT.md).

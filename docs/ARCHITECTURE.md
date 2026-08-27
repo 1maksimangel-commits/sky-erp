@@ -1,0 +1,1 @@
+> **Archived.** Canonical architecture: [../knowledge/02_SYSTEM_ARCHITECTURE.md](../knowledge/02_SYSTEM_ARCHITECTURE.md). Snapshot: [../knowledge/Archive/docs/ARCHITECTURE.md](../knowledge/Archive/docs/ARCHITECTURE.md).

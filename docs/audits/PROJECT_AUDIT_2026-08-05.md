@@ -1,0 +1,1 @@
+> **Archived.** Known issues: [../../knowledge/Memory/KNOWN_ISSUES.md](../../knowledge/Memory/KNOWN_ISSUES.md). Full audit snapshot: [../../knowledge/Archive/docs/audits/PROJECT_AUDIT_2026-08-05.md](../../knowledge/Archive/docs/audits/PROJECT_AUDIT_2026-08-05.md).

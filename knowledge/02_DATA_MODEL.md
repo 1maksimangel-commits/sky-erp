@@ -1,0 +1,1 @@
+> **Archived.** Data-model detail snapshot: [Archive/knowledge-legacy/02_DATA_MODEL.md](./Archive/knowledge-legacy/02_DATA_MODEL.md). Canonical schema rules: [03_DATABASE_AND_MIGRATIONS.md](./03_DATABASE_AND_MIGRATIONS.md). Architecture: [02_SYSTEM_ARCHITECTURE.md](./02_SYSTEM_ARCHITECTURE.md).

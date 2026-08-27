@@ -1,0 +1,1 @@
+> **Archived.** Export process is canonical in [04_BUSINESS_CONTEXT.md](./04_BUSINESS_CONTEXT.md) (Export process section). Historical narrative: [Archive/knowledge-legacy/04_EXPORT_PROCESS.md](./Archive/knowledge-legacy/04_EXPORT_PROCESS.md).

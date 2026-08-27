@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [Roadmap/Current.md](./Roadmap/Current.md) and [Roadmap/Future.md](./Roadmap/Future.md). Snapshot: [Archive/knowledge-legacy/18_ROADMAP.md](./Archive/knowledge-legacy/18_ROADMAP.md).

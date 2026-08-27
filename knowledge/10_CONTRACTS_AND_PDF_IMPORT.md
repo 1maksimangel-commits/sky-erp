@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [Modules/Contracts.md](./Modules/Contracts.md). Snapshot: [Archive/knowledge-legacy/10_CONTRACTS_AND_PDF_IMPORT.md](./Archive/knowledge-legacy/10_CONTRACTS_AND_PDF_IMPORT.md).

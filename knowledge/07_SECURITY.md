@@ -1,0 +1,1 @@
+> **Archived.** Canonical: [05_SECURITY_AND_AGENT_BOUNDARIES.md](./05_SECURITY_AND_AGENT_BOUNDARIES.md). Snapshot: [Archive/knowledge-legacy/07_SECURITY.md](./Archive/knowledge-legacy/07_SECURITY.md).

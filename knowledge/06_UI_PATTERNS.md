@@ -1,0 +1,1 @@
+> **Archived.** Canonical UI standards: [Development/CodingStandards.md](./Development/CodingStandards.md). Snapshot: [Archive/knowledge-legacy/06_UI_PATTERNS.md](./Archive/knowledge-legacy/06_UI_PATTERNS.md).
