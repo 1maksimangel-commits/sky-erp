@@ -12,6 +12,12 @@ Quality gates and testing expectations.
 | Build | `pnpm build` | Required |
 | Types | build TS step or `./node_modules/.bin/tsc --noEmit` | No `typecheck` script in package.json |
 | Unit/E2E | Not in package scripts | Playwright only with explicit approval, localhost only |
+| Schema checker unit tests | `pnpm db:test` | Negative tests for missing objects, FK/RPC drift, mandatory columns |
+| Database source inventory | `pnpm db:check` | Offline only; not a reconstruction PASS |
+| Clean Supabase replay | `pnpm db:replay` | Real isolated stack, canonical history, catalog comparison, rollback-only SQL fixtures |
+
+See [DatabaseReconstruction.md](./DatabaseReconstruction.md). The database replay
+workflow runs these gates plus TypeScript, lint, build, and diff checks in CI.
 
 ## Confirmed rules
 

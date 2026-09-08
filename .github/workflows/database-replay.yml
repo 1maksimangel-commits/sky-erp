@@ -1,0 +1,46 @@
+name: Database reconstruction
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.115.0
+      - run: pnpm db:test
+      - run: pnpm db:check
+      - run: pnpm db:replay
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+      - run: pnpm build
+      - run: git diff --check
+      # Metadata and pass/fail evidence only. Never upload CLI output, .temp,
+      # Supabase credentials, storage content, env files, or database dumps.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-replay-evidence
+          path: |
+            .db-replay/*/catalog.json
+            .db-replay/*/result.json
+          include-hidden-files: true
+          if-no-files-found: ignore

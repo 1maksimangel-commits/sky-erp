@@ -45,6 +45,7 @@ kuznetsova-utility-bot/
 .codex-local-*
 .codex-contract-import-apply/
 supabase/.temp/
+.db-replay/
 *.dump
 *.sql.dump
 templates/

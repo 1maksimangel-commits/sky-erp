@@ -96,6 +96,7 @@ Redirect stubs (not canonical content) also exist at former paths under `knowled
 | `Development/API.md` | API / Server Actions surface notes |
 | `Development/CodingStandards.md` | Coding + UI standards |
 | `Development/Testing.md` | Testing and quality gates |
+| `Development/DatabaseReconstruction.md` | Canonical schema reconstruction, migration replay, and database regression gate |
 | `Development/Performance.md` | Performance guidance |
 | `Roadmap/Current.md` | What exists now |
 | `Roadmap/Future.md` | Planned work |

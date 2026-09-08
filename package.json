@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:check": "node scripts/database/check.mjs",
+    "db:replay": "node scripts/database/replay.mjs",
+    "db:test": "node --test scripts/database/compare.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

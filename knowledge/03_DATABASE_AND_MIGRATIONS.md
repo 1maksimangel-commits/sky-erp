@@ -8,6 +8,11 @@ Authoritative database, migration, and RLS rules.
 
 Merged from prior knowledge DB doc, root `DATABASE.md`, and `docs/DATABASE_GUIDELINES.md` (archived).
 
+Phase 1 reconstruction strategy and gate:
+[DatabaseReconstruction.md](./Development/DatabaseReconstruction.md). The complete
+ordered `supabase/migrations` chain is canonical; ignored local bootstrap copies
+are excluded. The 44 historical files are checksum protected.
+
 ## Confirmed facts
 
 - Engine: **Supabase / PostgreSQL**  
@@ -56,10 +61,10 @@ Business cases → contract hub → logistics columns → warehouse → finance 
 
 ## Known risks / gaps
 
-- Masters (`companies`, `counterparties`, `contracts`, `products`, `payments`) assumed; not all created in this migration folder.  
+- Five previously assumed masters now have explicit prehistory prerequisites for clean reconstruction. Existing databases still need a separately reviewed adoption plan.
 - Broad `to public using (true)` policies in many migrations.  
 - Documents hotfix chain; `contract_imports` / CRM seafood columns may be missing remotely.  
-- Finance RPC inserts `payments.business_case_id` without ALTER adding it in the same migration set.  
+- Finance RPC uses `payments.business_case_id`, supplied later in the full chain by `20260805050000_payments_business_case_id.sql`; testing only the finance migration is insufficient.
 - SECURITY DEFINER RPCs granted broadly.
 
 ## Development rules
@@ -72,5 +77,4 @@ Business cases → contract hub → logistics columns → warehouse → finance 
 ## Planned
 
 - Authenticated, company-scoped RLS.  
-- Baseline migration for masters.  
-- New migration fixing `payments.business_case_id`.
+- Auth/RLS functional regression tests against the reconstructed schema.

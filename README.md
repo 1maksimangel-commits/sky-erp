@@ -12,6 +12,16 @@ Start with:
 
 Root stubs (`BUSINESS_CONTEXT.md`, `DATABASE.md`, `DEVELOPMENT_RULES.md`, `00_PROJECT_VISION.md`) and `docs/*` redirect to `knowledge/`. Historical copies are under `knowledge/Archive/`.
 
+## Database reconstruction
+
+The canonical application schema is the complete ordered history in
+`supabase/migrations/`. Use `pnpm db:check`, `pnpm db:test`, and `pnpm db:replay`
+for the isolated clean-database gate. See
+[Database reconstruction](./knowledge/Development/DatabaseReconstruction.md) for
+prerequisites, safety boundaries, and verification details. Ignored `.codex-local-*`
+bootstrap files are retired as schema sources. Existing or remote databases are
+not reset or changed by this workflow.
+
 ## Contract PDF Import (AI)
 
 Uses the OpenAI **Responses API** (`POST /v1/responses`) with PDF `input_file` uploads via the Files API (`purpose: user_data`).
@@ -27,9 +37,8 @@ Server-only environment variables (do not expose to the browser):
 | `CONTRACT_AI_TIMEOUT_MS` | Optional | Reserved / documented |
 | `CONTRACT_IMPORT_RETENTION_DAYS` | Optional | Retention hint for import records |
 
-Apply migration:
-
-`supabase/migrations/20260804230000_contract_pdf_import.sql`
+PDF import schema is included in the canonical migration chain. Do not apply its
+migration in isolation to establish a fresh database.
 
 If the AI key is missing, the Contracts page still loads and Import from PDF shows a configuration message.
 
