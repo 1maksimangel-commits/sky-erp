@@ -48,9 +48,9 @@ export type ContractImportReviewPayload = {
   importId: string;
   form: ContractFormInput;
   matches: {
-    companyId: string;
-    buyerId: string;
-    supplierId: string;
+    companyId: string | null;
+    buyerId: string | null;
+    supplierId: string | null;
     consigneeId: string | null;
   };
   productLines: ReviewedProductLine[];

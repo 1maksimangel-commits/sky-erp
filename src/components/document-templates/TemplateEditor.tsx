@@ -1,0 +1,22 @@
+"use client";
+
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import type { TemplateVariable } from "@/lib/document-templates/types";
+import { REUSABLE_BLOCKS } from "@/lib/document-templates/engine";
+import { renderTemplate, type CanonicalDocumentData } from "@/lib/document-templates/generated";
+import { useMemo, useState } from "react";
+
+export function TemplateEditor({ value, onChange, variables, blocks = [...REUSABLE_BLOCKS], previewData }: { value: string; onChange: (value: string) => void; variables: TemplateVariable[]; blocks?: string[]; previewData?: CanonicalDocumentData }) {
+  const [preview, setPreview] = useState(false);
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
+  const [margins, setMargins] = useState(20);
+  const editor = useEditor({ extensions: [StarterKit, Table.configure({ resizable: true }), TableRow, TableHeader, TableCell], content: value, immediatelyRender: false, onUpdate: ({ editor: current }) => onChange(current.getHTML()) });
+  const renderedPreview = useMemo(() => renderTemplate(value, previewData ?? { deal: { number: "DEMO-001" }, contract: { number: "CTR-001" }, seller: { name: "Seller" }, buyer: { legal_name: "Buyer" }, products: [{ name: "Sample product", quantity: 3, unit: "MT", unitPrice: 100 }] }), [previewData, value]);
+  if (!editor) return <div className="h-80 rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">Loading editor…</div>;
+  return <div className="rounded-md border border-border bg-background"><div className="flex flex-wrap items-center gap-1 border-b border-border p-2"><button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className="rounded border px-2 py-1 text-xs font-bold">B</button><button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className="rounded border px-2 py-1 text-xs italic">I</button><button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className="rounded border px-2 py-1 text-xs">• List</button><button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className="rounded border px-2 py-1 text-xs">1. List</button><button type="button" onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 3, withHeaderRow: true }).run()} className="rounded border px-2 py-1 text-xs">Table</button><button type="button" onClick={() => editor.chain().focus().setHardBreak().run()} className="rounded border px-2 py-1 text-xs">Page break</button><select value={orientation} onChange={(event) => setOrientation(event.target.value as "portrait" | "landscape")} className="rounded border bg-background px-2 py-1 text-xs"><option value="portrait">A4 Portrait</option><option value="landscape">A4 Landscape</option></select><label className="flex items-center gap-1 text-xs">Margin <input type="number" min={8} max={40} value={margins} onChange={(event) => setMargins(Number(event.target.value) || 20)} className="w-12 rounded border bg-background px-1 py-1" />mm</label><button type="button" onClick={() => setPreview((current) => !current)} className="ml-auto rounded border border-violet-500/30 px-2 py-1 text-xs text-violet-300">{preview ? "Edit" : "Preview"}</button>{blocks.map((block) => <button key={block} type="button" onClick={() => editor.chain().focus().insertContent(`<p><strong>${block.replaceAll("_", " ")}</strong></p>`).run()} className="rounded border border-emerald-500/30 px-2 py-1 text-xs text-emerald-300">{block.replaceAll("_", " ")}</button>)}{variables.map((item) => <button key={item.key} type="button" onClick={() => editor.chain().focus().insertContent(`{{${item.key}}}`).run()} className="rounded border border-sky-500/30 px-2 py-1 text-xs text-sky-300">{item.label}</button>)}</div>{preview ? <div className={`template-a4-preview ${orientation === "landscape" ? "template-a4-landscape" : ""}`} style={{ padding: `${margins}mm` }}><div className="template-editor-content" dangerouslySetInnerHTML={{ __html: renderedPreview }} /></div> : <EditorContent editor={editor} className="template-editor-content min-h-80 p-5" />}</div>;
+}

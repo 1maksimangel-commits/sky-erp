@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Contract } from "@/lib/contracts/db";
+import { ContractGenerateButton } from "@/components/contracts/ContractGenerateButton";
 import {
   CONTRACT_WORKSPACE_TABS,
   getActiveContractTab,
@@ -12,6 +13,7 @@ import {
 
 type ContractWorkspaceShellProps = {
   contract: Contract;
+  relatedContracts?: Contract[];
   children: React.ReactNode;
 };
 
@@ -59,6 +61,7 @@ function EntityLink({
 
 export function ContractWorkspaceShell({
   contract,
+  relatedContracts = [],
   children,
 }: ContractWorkspaceShellProps) {
   const pathname = usePathname();
@@ -132,6 +135,7 @@ export function ContractWorkspaceShell({
             />
           </p>
         </div>
+        <ContractGenerateButton contractId={contract.id} />
       </div>
 
       <div className="overflow-x-auto border-b border-border">
@@ -158,6 +162,7 @@ export function ContractWorkspaceShell({
         </div>
       </div>
 
+      {relatedContracts.length ? <section className="rounded-xl border border-border bg-card p-4"><h3 className="text-sm font-semibold">Related Contracts</h3><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-muted-foreground"><tr><th className="py-2">Role</th><th>Contract</th><th>Company / counterparty</th><th>Amount</th><th>Status</th></tr></thead><tbody className="divide-y divide-border">{relatedContracts.map((item) => <tr key={item.id}><td className="py-2">{item.business_role ?? "Other"}</td><td><Link href={`/contracts/${item.id}`} className="underline">{item.contract_number}</Link></td><td>{[item.company?.name, item.buyer?.legal_name ?? item.supplier?.legal_name].filter(Boolean).join(" / ") || "—"}</td><td>{item.amount ?? "—"} {item.currency ?? ""}</td><td>{item.status ?? "Draft"}</td></tr>)}</tbody></table></div></section> : null}
       <div>{children}</div>
     </div>
   );

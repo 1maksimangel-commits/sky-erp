@@ -193,7 +193,7 @@ export function BusinessCaseFormModal({
               id="business-case-form-title"
               className="text-base font-semibold text-foreground"
             >
-              New Business Case
+              New Deal
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Create a core trading entity for this deal
@@ -219,7 +219,7 @@ export function BusinessCaseFormModal({
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Case Number" required>
+              <Field label="Deal Number" required>
                 <input
                   type="text"
                   value={form.case_number}
@@ -270,7 +270,12 @@ export function BusinessCaseFormModal({
                 >
                   <option value="Draft">Draft</option>
                   <option value="Active">Active</option>
-                  <option value="Closed">Closed</option>
+                  <option value="Documentation">Documentation</option>
+                  <option value="In Transit">In Transit</option>
+                  <option value="Payment">Payment</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="Closed">Closed (legacy)</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
               </Field>

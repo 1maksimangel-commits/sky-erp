@@ -2,6 +2,7 @@
 
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ContractDocumentsAttachSection,
   type PendingContractDocument,
@@ -48,7 +49,10 @@ type FormState = {
   company_id: string;
   buyer_id: string;
   supplier_id: string;
+  consignee_id: string;
   business_case_id: string;
+  deal_id: string;
+  business_role: string;
   currency: string;
   amount: string;
   incoterms: string;
@@ -79,7 +83,10 @@ function toFormState(values: ContractFormInput): FormState {
     company_id: values.company_id ?? "",
     buyer_id: values.buyer_id ?? "",
     supplier_id: values.supplier_id ?? "",
+    consignee_id: values.consignee_id ?? "",
     business_case_id: values.business_case_id ?? "",
+    deal_id: values.deal_id ?? values.business_case_id ?? "",
+    business_role: values.business_role ?? "",
     currency: values.currency ?? "USD",
     amount: values.amount != null ? String(values.amount) : "",
     incoterms: values.incoterms ?? "",
@@ -99,7 +106,10 @@ function toFormInput(form: FormState): ContractFormInput {
     company_id: form.company_id,
     buyer_id: form.buyer_id,
     supplier_id: form.supplier_id,
+    consignee_id: form.consignee_id,
     business_case_id: form.business_case_id.trim() || null,
+    deal_id: form.deal_id.trim() || null,
+    business_role: form.business_role.trim() || null,
     currency: form.currency.trim() || "USD",
     amount:
       parsedAmount != null && Number.isFinite(parsedAmount) ? parsedAmount : null,
@@ -160,11 +170,23 @@ function mergeSelectedCompany(
   return [
     {
       id: contract.company.id,
+      business_role: null,
       name: contract.company.name,
       code: "",
       short_name: null,
       country: null,
       city: null,
+      address: null,
+      tax_id: null,
+      registration_number: null,
+      email: null,
+      phone: null,
+      website: null,
+      authorized_signer_name: null,
+      authorized_signer_title: null,
+      seal_document_id: null,
+      signature_document_id: null,
+      bank_accounts: [],
       is_active: false,
     },
     ...companies,
@@ -250,9 +272,9 @@ export function ContractFormModal({
     counterparties,
     contract?.buyer
   );
-  const supplierOptions = mergeSelectedCounterparty(
+  const consigneeOptions = mergeSelectedCounterparty(
     counterparties,
-    contract?.supplier
+    contract?.consignee
   );
 
   useResetWhenOpened(open, () => {
@@ -601,7 +623,7 @@ export function ContractFormModal({
                   className={inputClassName}
                 />
               </Field>
-              <Field label="Company" required>
+              <Field label="Seller" required>
                 <select
                   value={form.company_id}
                   onChange={(e) => updateField("company_id", e.target.value)}
@@ -632,38 +654,41 @@ export function ContractFormModal({
                   ))}
                 </select>
               </Field>
+              <Field label="Business role">
+                <select value={form.business_role} onChange={(e) => updateField("business_role", e.target.value)} className={inputClassName}>
+                  <option value="">Not specified</option>
+                  {(["Purchase", "Sale", "Commission", "Logistics", "Other"] as const).map((role) => <option key={role} value={role}>{role}</option>)}
+                </select>
+              </Field>
               <Field label="Buyer" required>
                 <select
                   value={form.buyer_id}
                   onChange={(e) => updateField("buyer_id", e.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select buyer</option>
+                  <option value="">{buyerOptions.length ? "Select buyer" : "No buyers available"}</option>
                   {buyerOptions.map((counterparty) => (
                     <option key={counterparty.id} value={counterparty.id}>
                       {counterparty.legal_name}
                     </option>
                   ))}
                 </select>
+                {!buyerOptions.length ? <Link href="/counterparties?new=1" className="mt-1 inline-block text-xs text-sky-300 hover:underline">Create buyer in Counterparties</Link> : null}
               </Field>
-              <div className="sm:col-span-2">
-                <Field label="Supplier" required>
-                  <select
-                    value={form.supplier_id}
-                    onChange={(e) =>
-                      updateField("supplier_id", e.target.value)
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select supplier</option>
-                    {supplierOptions.map((counterparty) => (
-                      <option key={counterparty.id} value={counterparty.id}>
-                        {counterparty.legal_name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Consignee / грузополучатель">
+                <select
+                  value={form.consignee_id}
+                  onChange={(e) => updateField("consignee_id", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select consignee</option>
+                  {consigneeOptions.map((counterparty) => (
+                    <option key={counterparty.id} value={counterparty.id}>
+                      {counterparty.legal_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </Section>
 
             <Section title="Commercial">

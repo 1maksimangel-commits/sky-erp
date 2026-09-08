@@ -11,9 +11,12 @@ export type Contract = {
   incoterms: string | null;
   status: string | null;
   business_case_id: string | null;
+  deal_id: string | null;
+  business_role: string | null;
   company: { id: string; name: string } | null;
   buyer: { id: string; legal_name: string } | null;
   supplier: { id: string; legal_name: string } | null;
+  consignee: { id: string; legal_name: string } | null;
 };
 
 export type ContractStats = {
@@ -41,9 +44,12 @@ type ContractRow = {
   incoterms: string | null;
   status: string | null;
   business_case_id?: string | null;
+  deal_id?: string | null;
+  business_role?: string | null;
   company: CompanyRelation;
   buyer: Relation;
   supplier: Relation;
+  consignee: Relation;
 };
 
 function normalizeRelation(
@@ -78,9 +84,12 @@ function normalizeContract(row: ContractRow): Contract {
     incoterms: row.incoterms,
     status: row.status,
     business_case_id: row.business_case_id ?? null,
+    deal_id: row.deal_id ?? row.business_case_id ?? null,
+    business_role: row.business_role ?? null,
     company: normalizeCompany(row.company),
     buyer: normalizeRelation(row.buyer),
     supplier: normalizeRelation(row.supplier),
+    consignee: normalizeRelation(row.consignee),
   };
 }
 
@@ -117,19 +126,37 @@ const contractColumns = `
   incoterms,
   status,
   business_case_id,
+  deal_id,
+  business_role,
   company:company_id ( id, name ),
   buyer:buyer_id ( id, legal_name ),
-  supplier:supplier_id ( id, legal_name )
+  supplier:supplier_id ( id, legal_name ),
+  consignee:consignee_id ( id, legal_name )
 ` as const;
+
+function isMissingDeletedAtColumn(error: { code?: string; message: string }): boolean {
+  return /deleted_at|PGRST204|42703/i.test(`${error.code ?? ""} ${error.message}`);
+}
 
 export async function getContracts(): Promise<ContractsResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let result = await supabase
     .from("contracts")
     .select(contractColumns)
+    .is("deleted_at", null)
     .order("contract_date", { ascending: false, nullsFirst: false })
     .order("contract_number", { ascending: false });
+
+  if (result.error && isMissingDeletedAtColumn(result.error)) {
+    result = await supabase
+      .from("contracts")
+      .select(contractColumns)
+      .order("contract_date", { ascending: false, nullsFirst: false })
+      .order("contract_number", { ascending: false });
+  }
+
+  const { data, error } = result;
 
   if (error) {
     return {
@@ -155,11 +182,22 @@ export type ContractResult =
 export async function getContractById(id: string): Promise<ContractResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let result = await supabase
     .from("contracts")
     .select(contractColumns)
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
+
+  if (result.error && isMissingDeletedAtColumn(result.error)) {
+    result = await supabase
+      .from("contracts")
+      .select(contractColumns)
+      .eq("id", id)
+      .maybeSingle();
+  }
+
+  const { data, error } = result;
 
   if (error) {
     return {
@@ -176,4 +214,11 @@ export async function getContractById(id: string): Promise<ContractResult> {
     data: normalizeContract(data as ContractRow),
     error: null,
   };
+}
+
+export async function getRelatedContracts(dealId: string | null, excludeId?: string) {
+  if (!dealId) return [] as Contract[];
+  const supabase = await createClient();
+  const { data } = await supabase.from("contracts").select(contractColumns).eq("deal_id", dealId).neq("id", excludeId ?? "").order("contract_number");
+  return ((data ?? []) as ContractRow[]).map(normalizeContract);
 }

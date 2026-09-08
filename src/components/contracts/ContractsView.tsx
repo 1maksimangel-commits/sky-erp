@@ -335,7 +335,7 @@ export function ContractsView({
         onClose={() => setDeleteTarget(null)}
         onDeleted={() => {
           router.refresh();
-          setToast("Contract deleted successfully.");
+          setToast("Contract removed successfully.");
         }}
       />
 
@@ -521,20 +521,23 @@ export function ContractsView({
                                 event.stopPropagation();
                                 openEditModal(item);
                               }}
-                              className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                             >
                               <Pencil className="h-3.5 w-3.5" />
+                              <span className="hidden xl:inline">Edit</span>
                             </button>
                             <button
                               type="button"
                               aria-label={`Delete ${item.contract_number}`}
+                              title="Delete contract"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setDeleteTarget(item);
                               }}
-                              className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 px-2 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
+                              <span className="hidden xl:inline">Delete</span>
                             </button>
                           </div>
                         </td>

@@ -6,7 +6,10 @@ export type ContractFormInput = {
   company_id: string | null;
   buyer_id: string | null;
   supplier_id: string | null;
+  consignee_id: string | null;
   business_case_id: string | null;
+  deal_id: string | null;
+  business_role: string | null;
   currency: string;
   amount: number | null;
   incoterms: string | null;
@@ -21,7 +24,10 @@ export const emptyContractForm = (): ContractFormInput => ({
   company_id: null,
   buyer_id: null,
   supplier_id: null,
+  consignee_id: null,
   business_case_id: null,
+  deal_id: null,
+  business_role: null,
   currency: "USD",
   amount: null,
   incoterms: null,
@@ -44,7 +50,10 @@ export function contractToFormInput(contract: Contract): ContractFormInput {
     company_id: contract.company?.id ?? null,
     buyer_id: contract.buyer?.id ?? null,
     supplier_id: contract.supplier?.id ?? null,
+    consignee_id: contract.consignee?.id ?? null,
     business_case_id: contract.business_case_id ?? null,
+    deal_id: contract.deal_id ?? contract.business_case_id ?? null,
+    business_role: contract.business_role ?? null,
     currency: contract.currency ?? "USD",
     amount: contract.amount,
     incoterms: contract.incoterms,

@@ -96,6 +96,10 @@ export function ProductImportModal({
     () => rows.filter((row) => row.errors.length > 0),
     [rows]
   );
+  const validationSkuKey = useMemo(
+    () => rows.map((row) => row.data.sku).join("\u0000"),
+    [rows]
+  );
 
   useResetWhenOpened(open, () => {
     setStep("excel");
@@ -131,7 +135,7 @@ export function ProductImportModal({
   }, [open, onClose, parsing, validating, importing]);
 
   useEffect(() => {
-    if (step !== "validation" || rows.length === 0) {
+    if (step !== "validation" || !validationSkuKey) {
       return;
     }
 
@@ -141,7 +145,7 @@ export function ProductImportModal({
       setValidating(true);
       setValidationError(null);
 
-      const skus = rows.map((row) => row.data.sku);
+      const skus = validationSkuKey.split("\u0000");
       const result = await checkExistingSkus(skus);
 
       if (cancelled) {
@@ -165,7 +169,7 @@ export function ProductImportModal({
     return () => {
       cancelled = true;
     };
-  }, [step]);
+  }, [step, validationSkuKey]);
 
   if (!open) {
     return null;

@@ -54,7 +54,7 @@ export async function createBusinessCase(
   if (!nullIfEmpty(input.company_id)) {
     return {
       success: false,
-      error: "Company is required for every business case.",
+      error: "Company is required for every Deal.",
     };
   }
 
@@ -89,11 +89,11 @@ export async function createBusinessCase(
     entityId: data.id,
     action: "created",
     eventType: "business_case_created",
-    title: "Business Case created",
-    summary: `Business Case ${data.case_number} created`,
+    title: "Deal created",
+    summary: `Deal ${data.case_number} created`,
     newValue: { case_number: data.case_number, status: input.status },
     notify: {
-      title: "Business Case created",
+      title: "Deal created",
       body: data.case_number,
       category: "business_case",
       href: `/business-cases/${data.id}`,

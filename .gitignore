@@ -40,3 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 kuznetsova-utility-bot/
+
+# SKY local development artifacts
+.codex-local-*
+.codex-contract-import-apply/
+supabase/.temp/
+*.dump
+*.sql.dump
+templates/

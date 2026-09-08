@@ -57,7 +57,9 @@ const inputClassName =
 
 function fieldDisplay(field: ExtractedField<unknown> | null | undefined): string {
   const value = field?.value;
-  if (value == null || value === "") return "";
+  if (value == null || value === "") {
+    return "Not extracted — can be completed later";
+  }
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
 }
@@ -189,9 +191,9 @@ export function ContractImportReviewWorkspace({
             supplier_id: supplierId || null,
           },
           matches: {
-            companyId,
-            buyerId,
-            supplierId,
+            companyId: companyId || null,
+            buyerId: buyerId || null,
+            supplierId: supplierId || null,
             consigneeId: null,
           },
           productLines,
@@ -306,6 +308,7 @@ export function ContractImportReviewWorkspace({
 
     const created: Counterparty = {
       id: result.data.id,
+      source_company_id: null,
       code: null,
       legal_name: legalName,
       short_name: shortName,
@@ -318,6 +321,15 @@ export function ContractImportReviewWorkspace({
       email,
       phone,
       website: null,
+      authorized_signer_name: null,
+      authorized_signer_title: null,
+      bank_account_name: null,
+      bank_name: null,
+      bank_address: null,
+      account_number: null,
+      iban: null,
+      swift: null,
+      bank_currency: "USD",
       is_active: true,
     };
 
@@ -427,9 +439,9 @@ export function ContractImportReviewWorkspace({
         supplier_id: supplierId || null,
       },
       matches: {
-        companyId,
-        buyerId,
-        supplierId,
+        companyId: companyId || null,
+        buyerId: buyerId || null,
+        supplierId: supplierId || null,
         consigneeId: null,
       },
       productLines,
@@ -800,7 +812,6 @@ export function ContractImportReviewWorkspace({
                     {(
                       [
                         ["buyer_legal_name", "Legal name"],
-                        ["buyer_short_name", "Short name"],
                         ["buyer_registration_number", "Registration no."],
                         ["buyer_tax_id", "Tax ID"],
                         ["buyer_address", "Address"],
@@ -862,7 +873,6 @@ export function ContractImportReviewWorkspace({
                     {(
                       [
                         ["supplier_legal_name", "Legal name"],
-                        ["supplier_short_name", "Short name"],
                         ["supplier_registration_number", "Registration no."],
                         ["supplier_tax_id", "Tax ID"],
                         ["supplier_address", "Address"],
@@ -1238,37 +1248,6 @@ export function ContractImportReviewWorkspace({
             </section>
 
             <section className="space-y-3 rounded-lg border border-border p-3">
-              <h3 className="text-sm font-medium text-foreground">Legal</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {(
-                  [
-                    ["governing_law", "Governing law"],
-                    ["arbitration", "Arbitration"],
-                    ["dispute_resolution", "Dispute resolution"],
-                    ["force_majeure", "Force majeure"],
-                    ["claims_period", "Claims period"],
-                    ["inspection_terms", "Inspection terms"],
-                    ["special_conditions", "Special conditions"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <ConfidenceField
-                    key={key}
-                    label={label}
-                    field={extraction.legal[key]}
-                    onFocusSource={focusSourcePage}
-                  >
-                    <textarea
-                      className={inputClassName}
-                      rows={2}
-                      value={fieldDisplay(extraction.legal[key])}
-                      readOnly
-                    />
-                  </ConfidenceField>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3 rounded-lg border border-border p-3">
               <h3 className="text-sm font-medium text-foreground">Signatures</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 {(
@@ -1334,6 +1313,10 @@ export function ContractImportReviewWorkspace({
                   ))}
                 </>
               )}
+              <p className="pt-1 text-[11px] text-muted-foreground">
+                Fields marked “review” are optional AI suggestions and do not
+                block continuation. Only errors listed above must be corrected.
+              </p>
               <p className="pt-1 text-[11px] text-muted-foreground">
                 Original PDF will be linked to the new contract as document type
                 “contract” on confirm.

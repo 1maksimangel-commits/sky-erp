@@ -10,6 +10,7 @@ import {
   Tag,
   ToggleLeft,
 } from "lucide-react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { PageActions } from "@/components/layout/ShellContext";
@@ -72,9 +73,13 @@ function ProductPhoto({ name, imageUrl }: { name: string; imageUrl: string | nul
   }
 
   return (
-    <img
+    <Image
       src={imageUrl}
       alt={name}
+      width={40}
+      height={40}
+      loader={({ src }) => src}
+      unoptimized
       className="h-10 w-10 shrink-0 rounded-md border border-border object-cover"
       onError={() => setFailed(true)}
     />

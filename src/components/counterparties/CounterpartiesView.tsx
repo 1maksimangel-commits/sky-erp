@@ -5,22 +5,26 @@ import {
   Layers,
   Plus,
   Search,
+  Trash2,
   ToggleLeft,
   Users,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { CounterpartyFormModal } from "@/components/counterparties/CounterpartyFormModal";
+import { deleteCounterparty } from "@/lib/counterparties/actions";
 import { PageActions } from "@/components/layout/ShellContext";
 import { TableShell } from "@/components/ui/TableShell";
 import { Toast } from "@/components/ui/Toast";
 import type { Counterparty, CounterpartyStats } from "@/lib/counterparties";
+import type { Company } from "@/lib/companies";
 import { useSearchParamOpen } from "@/lib/ui/open-state";
 
 type CounterpartiesViewProps = {
   counterparties: Counterparty[] | null;
   stats: CounterpartyStats | null;
   error: string | null;
+  companies?: Company[];
 };
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -102,6 +106,7 @@ export function CounterpartiesView({
   counterparties,
   stats,
   error,
+  companies = [],
 }: CounterpartiesViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -188,6 +193,7 @@ export function CounterpartiesView({
           setToast("Counterparty saved successfully.");
           if (searchParams.get("new") === "1") router.replace("/counterparties");
         }}
+        companies={companies}
       />
 
       {toast ? (
@@ -292,6 +298,9 @@ export function CounterpartiesView({
                     <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
                       Status
                     </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -335,6 +344,24 @@ export function CounterpartiesView({
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge isActive={item.is_active} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          title="Delete counterparty"
+                          aria-label={`Delete ${item.legal_name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (!window.confirm(`Delete ${item.legal_name} from Counterparties?`)) return;
+                            void deleteCounterparty(item.id).then((result) => {
+                              setToast(result.success ? "Counterparty deleted." : result.error);
+                              if (result.success) router.refresh();
+                            });
+                          }}
+                          className="inline-flex rounded-md border border-red-500/30 p-1.5 text-red-400 hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -9,14 +9,17 @@ import {
   type CounterpartyFormInput,
 } from "@/lib/counterparties/types";
 import { useResetWhenOpened } from "@/lib/ui/open-state";
+import type { Company } from "@/lib/companies";
 
 type CounterpartyFormModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  companies?: Company[];
 };
 
 type FormState = {
+  source_company_id: string | null;
   code: string;
   legal_name: string;
   short_name: string;
@@ -29,6 +32,15 @@ type FormState = {
   email: string;
   phone: string;
   website: string;
+  authorized_signer_name: string;
+  authorized_signer_title: string;
+  bank_account_name: string;
+  bank_name: string;
+  bank_address: string;
+  account_number: string;
+  iban: string;
+  swift: string;
+  bank_currency: string;
   is_active: boolean;
 };
 
@@ -39,6 +51,7 @@ const labelClassName = "mb-1.5 block text-xs font-medium text-muted-foreground";
 
 function toFormState(values: CounterpartyFormInput): FormState {
   return {
+    source_company_id: values.source_company_id ?? null,
     code: values.code,
     legal_name: values.legal_name,
     short_name: values.short_name ?? "",
@@ -51,12 +64,22 @@ function toFormState(values: CounterpartyFormInput): FormState {
     email: values.email ?? "",
     phone: values.phone ?? "",
     website: values.website ?? "",
+    authorized_signer_name: values.authorized_signer_name ?? "",
+    authorized_signer_title: values.authorized_signer_title ?? "",
+    bank_account_name: values.bank_account_name ?? "",
+    bank_name: values.bank_name ?? "",
+    bank_address: values.bank_address ?? "",
+    account_number: values.account_number ?? "",
+    iban: values.iban ?? "",
+    swift: values.swift ?? "",
+    bank_currency: values.bank_currency ?? "USD",
     is_active: values.is_active,
   };
 }
 
 function toFormInput(form: FormState): CounterpartyFormInput {
   return {
+    source_company_id: form.source_company_id,
     code: form.code.trim(),
     legal_name: form.legal_name.trim(),
     short_name: form.short_name.trim() || null,
@@ -69,6 +92,15 @@ function toFormInput(form: FormState): CounterpartyFormInput {
     email: form.email.trim() || null,
     phone: form.phone.trim() || null,
     website: form.website.trim() || null,
+    authorized_signer_name: form.authorized_signer_name.trim() || null,
+    authorized_signer_title: form.authorized_signer_title.trim() || null,
+    bank_account_name: form.bank_account_name.trim() || null,
+    bank_name: form.bank_name.trim() || null,
+    bank_address: form.bank_address.trim() || null,
+    account_number: form.account_number.trim() || null,
+    iban: form.iban.trim() || null,
+    swift: form.swift.trim().toUpperCase() || null,
+    bank_currency: form.bank_currency.trim().toUpperCase() || "USD",
     is_active: form.is_active,
   };
 }
@@ -97,6 +129,7 @@ export function CounterpartyFormModal({
   open,
   onClose,
   onSaved,
+  companies = [],
 }: CounterpartyFormModalProps) {
   const [form, setForm] = useState<FormState>(() =>
     toFormState(emptyCounterpartyForm())
@@ -135,6 +168,40 @@ export function CounterpartyFormModal({
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+    setError(null);
+  }
+
+  function handleCompanyChange(companyId: string) {
+    const company = companies.find((item) => item.id === companyId);
+    if (!company) {
+      updateField("source_company_id", companyId || null);
+      return;
+    }
+    const bank = company.bank_accounts[0] ?? null;
+    setForm((current) => ({
+      ...current,
+      source_company_id: company.id,
+      code: company.code,
+      legal_name: company.name,
+      short_name: company.short_name ?? "",
+      country: company.country ?? "",
+      city: company.city ?? "",
+      address: company.address ?? "",
+      tax_id: company.tax_id ?? "",
+      registration_number: company.registration_number ?? "",
+      email: company.email ?? "",
+      phone: company.phone ?? "",
+      website: company.website ?? "",
+      authorized_signer_name: company.authorized_signer_name ?? "",
+      authorized_signer_title: company.authorized_signer_title ?? "",
+      bank_account_name: bank?.name ?? "",
+      bank_name: bank?.bank_name ?? "",
+      bank_address: bank?.bank_address ?? "",
+      account_number: bank?.account_number ?? "",
+      iban: bank?.iban ?? "",
+      swift: bank?.swift ?? "",
+      bank_currency: bank?.currency ?? "USD",
+    }));
     setError(null);
   }
 
@@ -256,6 +323,12 @@ export function CounterpartyFormModal({
                   ))}
                 </select>
               </Field>
+              <Field label="Linked Company">
+                <select value={form.source_company_id ?? ""} onChange={(e) => handleCompanyChange(e.target.value)} className={inputClassName}>
+                  <option value="">No linked company</option>
+                  {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                </select>
+              </Field>
               <Field label="Country">
                 <input
                   type="text"
@@ -324,6 +397,33 @@ export function CounterpartyFormModal({
                   placeholder="https://"
                   className={inputClassName}
                 />
+              </Field>
+              <Field label="Authorized signer name">
+                <input type="text" value={form.authorized_signer_name} onChange={(e) => updateField("authorized_signer_name", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Authorized signer title">
+                <input type="text" value={form.authorized_signer_title} onChange={(e) => updateField("authorized_signer_title", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Bank account name">
+                <input type="text" value={form.bank_account_name} onChange={(e) => updateField("bank_account_name", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Bank name">
+                <input type="text" value={form.bank_name} onChange={(e) => updateField("bank_name", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Bank address">
+                <input type="text" value={form.bank_address} onChange={(e) => updateField("bank_address", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Account number">
+                <input type="text" value={form.account_number} onChange={(e) => updateField("account_number", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="IBAN">
+                <input type="text" value={form.iban} onChange={(e) => updateField("iban", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="SWIFT">
+                <input type="text" value={form.swift} onChange={(e) => updateField("swift", e.target.value)} className={inputClassName} />
+              </Field>
+              <Field label="Bank currency">
+                <input type="text" value={form.bank_currency} onChange={(e) => updateField("bank_currency", e.target.value)} className={inputClassName} />
               </Field>
               <Field label="Active">
                 <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-md border border-border bg-background px-3">

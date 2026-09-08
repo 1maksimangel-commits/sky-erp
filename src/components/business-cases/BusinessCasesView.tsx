@@ -207,7 +207,7 @@ export function BusinessCasesView({
           className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90"
         >
           <Plus className="h-3.5 w-3.5" />
-          New Business Case
+          New Deal
         </button>
       </PageActions>
 
@@ -255,7 +255,7 @@ export function BusinessCasesView({
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
-              title="Contract Value"
+              title="Legacy Contract Value"
               value={formatAmount(stats?.totalContractAmount ?? 0, "USD")}
               icon={<DollarSign className="h-4 w-4" />}
             />
@@ -294,7 +294,7 @@ export function BusinessCasesView({
                   <thead>
                     <tr>
                       <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
-                        Case Number
+                        Deal Number
                       </th>
                       <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
                         Title

@@ -68,9 +68,12 @@ function ContractPdfImportWizardInner({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = "";
-      abortRef.current?.abort();
     };
   }, [busy, onClose]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   function resetBusyState() {
     setBusy(false);
@@ -188,6 +191,9 @@ function ContractPdfImportWizardInner({
       setError(err instanceof Error ? err.message : "Extraction failed.");
     } finally {
       window.clearTimeout(timeoutId);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
   }
 

@@ -30,6 +30,7 @@ export function BankAccountsView({
     company_id: "",
     name: "",
     bank_name: "",
+    bank_address: "",
     account_number: "",
     iban: "",
     swift: "",
@@ -58,6 +59,7 @@ export function BankAccountsView({
       company_id: form.company_id,
       name: form.name,
       bank_name: form.bank_name || null,
+      bank_address: form.bank_address || null,
       account_number: form.account_number || null,
       iban: form.iban || null,
       swift: form.swift || null,
@@ -155,6 +157,12 @@ export function BankAccountsView({
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
           <input
+            placeholder="Bank address"
+            value={form.bank_address}
+            onChange={(e) => setForm((c) => ({ ...c, bank_address: e.target.value }))}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+          <input
             placeholder="IBAN"
             value={form.iban}
             onChange={(e) => setForm((c) => ({ ...c, iban: e.target.value }))}
@@ -196,7 +204,7 @@ export function BankAccountsView({
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-border bg-accent/30">
-                {["Company", "Account", "Bank", "Currency", "Balance", "Status"].map(
+                {["Company", "Account", "Bank", "Bank address", "Currency", "Balance", "Status"].map(
                   (label) => (
                     <th
                       key={label}
@@ -219,6 +227,9 @@ export function BankAccountsView({
                     </p>
                   </td>
                   <td className="px-4 py-3">{account.bank_name ?? "—"}</td>
+                  <td className="max-w-xs whitespace-normal px-4 py-3 text-muted-foreground">
+                    {account.bank_address ?? "—"}
+                  </td>
                   <td className="px-4 py-3">{account.currency}</td>
                   <td className="px-4 py-3">
                     {formatMoney(account.current_balance, account.currency)}

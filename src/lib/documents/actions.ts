@@ -129,9 +129,21 @@ export async function uploadDocument(
     "";
 
   const typeFromForm = input.formData.get("document_type");
-  const documentType =
+  const requestedDocumentType =
     input.documentType ||
     (typeof typeFromForm === "string" ? typeFromForm : "");
+  const documentTypeAliases: Record<string, string> = {
+    commercial_invoice: "invoice",
+    proforma_invoice: "invoice",
+    specification: "supplement",
+    annex: "supplement",
+    bill_of_lading: "bl",
+    certificate_of_origin: "certificate",
+    health_certificate: "certificate",
+    veterinary_certificate: "certificate",
+  };
+  const documentType =
+    documentTypeAliases[requestedDocumentType] ?? requestedDocumentType;
   if (!validateDocumentType(documentType)) {
     return { success: false, error: "Document type is required." };
   }

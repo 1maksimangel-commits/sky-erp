@@ -1,6 +1,12 @@
 export const DOCUMENT_ENTITY_TYPES = [
   "business_case",
   "contract",
+  "supplement",
+  "invoice",
+  "certificate",
+  "bl",
+  "commission_invoice",
+  "letter",
   "shipment",
   "invoice",
   "payment",
@@ -15,6 +21,13 @@ export type DocumentEntityType = (typeof DOCUMENT_ENTITY_TYPES)[number];
 
 export const DOCUMENT_TYPES = [
   "contract",
+  "supplement",
+  "annex",
+  "invoice",
+  "certificate",
+  "bl",
+  "commission_invoice",
+  "letter",
   "specification",
   "commercial_invoice",
   "proforma_invoice",
@@ -36,6 +49,13 @@ export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   contract: "Contract",
+  supplement: "Supplement",
+  annex: "Annex (legacy)",
+  invoice: "Invoice",
+  certificate: "Certificate",
+  bl: "Bill of Lading",
+  commission_invoice: "Commission Invoice",
+  letter: "Letter",
   specification: "Specification",
   commercial_invoice: "Commercial Invoice",
   proforma_invoice: "Proforma Invoice",

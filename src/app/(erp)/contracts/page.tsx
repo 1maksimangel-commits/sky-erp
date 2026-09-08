@@ -4,7 +4,7 @@ import { getBusinessCases } from "@/lib/business-cases";
 import { getActiveCompanies } from "@/lib/companies";
 import { getContracts } from "@/lib/contracts/db";
 import { getContractImportAiStatus } from "@/lib/contracts/import/actions";
-import { getActiveCounterparties } from "@/lib/counterparties";
+import { getCounterparties } from "@/lib/counterparties";
 import { getProducts } from "@/lib/products";
 
 export default async function ContractsPage() {
@@ -18,7 +18,7 @@ export default async function ContractsPage() {
   ] = await Promise.all([
     getContracts(),
     getActiveCompanies(),
-    getActiveCounterparties(),
+    getCounterparties(),
     getBusinessCases(),
     getProducts(),
     getContractImportAiStatus(),

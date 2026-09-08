@@ -1,22 +1,23 @@
 import type { ContractFormInput } from "@/lib/contracts/form-types";
 
 export function validateContractFormInput(
-  input: ContractFormInput
+  input: ContractFormInput,
+  options: { allowIncompleteDraft?: boolean } = {}
 ): string | null {
-  if (!input.contract_number.trim()) {
+  const incompleteDraft =
+    options.allowIncompleteDraft === true &&
+    input.status.trim().toLowerCase() === "draft";
+
+  if (!incompleteDraft && !input.contract_number.trim()) {
     return "Contract number is required.";
   }
 
-  if (!input.company_id?.trim()) {
+  if (!incompleteDraft && !input.company_id?.trim()) {
     return "Company is required.";
   }
 
-  if (!input.buyer_id?.trim()) {
+  if (!incompleteDraft && !input.buyer_id?.trim()) {
     return "Buyer is required.";
-  }
-
-  if (!input.supplier_id?.trim()) {
-    return "Supplier is required.";
   }
 
   if (!input.status.trim()) {
@@ -27,7 +28,11 @@ export function validateContractFormInput(
     return "Amount must be zero or greater.";
   }
 
-  if (input.buyer_id.trim() === input.supplier_id.trim()) {
+  if (
+    input.buyer_id?.trim() &&
+    input.supplier_id?.trim() &&
+    input.buyer_id.trim() === input.supplier_id.trim()
+  ) {
     return "Buyer and supplier cannot be the same counterparty.";
   }
 

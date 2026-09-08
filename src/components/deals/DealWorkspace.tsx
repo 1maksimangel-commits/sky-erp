@@ -1,0 +1,135 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { AlertTriangle, Loader2, Plus, Save } from "lucide-react";
+import { EntityDocumentsPanel } from "@/components/platform/EntityDocumentsPanel";
+import { EntityTimelinePanel } from "@/components/platform/EntityTimelinePanel";
+import { EntityActivityPanel } from "@/components/platform/EntityActivityPanel";
+import type { ErpDocument } from "@/lib/documents/types";
+import type { ActivityEntry } from "@/lib/platform/activity-db";
+import type { TimelineEvent } from "@/lib/platform/timeline-db";
+import type { Counterparty } from "@/lib/counterparties";
+import type { Product } from "@/lib/products";
+import { addDealParticipant, addDealProduct, classifyDealContract, updateDeal } from "@/lib/deals/actions";
+import { DEAL_CONTRACT_ROLES, DEAL_PARTICIPANT_ROLES, DEAL_STATUSES, type CurrencyAmount, type DealFormInput, type DealWorkspaceData } from "@/lib/deals/types";
+
+type Tab = "overview" | "participants" | "products" | "contracts" | "documents" | "logistics" | "finance" | "history";
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "overview", label: "Overview" }, { id: "participants", label: "Participants" },
+  { id: "products", label: "Products" }, { id: "contracts", label: "Contracts" },
+  { id: "documents", label: "Documents" }, { id: "logistics", label: "Logistics" },
+  { id: "finance", label: "Finance" }, { id: "history", label: "History" },
+];
+const inputClass = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label><span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>{children}</label>;
+}
+
+function moneyList(items: CurrencyAmount[]): string {
+  return items.length ? items.map(({ amount, currency }) => `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`).join(" + ") : "—";
+}
+
+function toNumber(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function Card({ label, value, note }: { label: string; value: string; note?: string }) {
+  return <div className="rounded-lg border border-card-border bg-card p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-base font-semibold text-foreground">{value}</p>{note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}</div>;
+}
+
+function DealOverview({ data }: { data: DealWorkspaceData }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<DealFormInput>({
+    title: data.deal.title, status: data.deal.status ?? "Draft", incoterms: data.deal.incoterms,
+    loading_port: data.deal.loading_port, destination_port: data.deal.destination_port,
+    payment_terms: data.deal.payment_terms, expected_shipment_date: data.deal.expected_shipment_date,
+    eta: data.deal.eta, purchase_currency: data.deal.purchase_currency,
+    sales_currency: data.deal.sales_currency, purchase_value: data.deal.purchase_value,
+    sales_value: data.deal.sales_value, expected_expenses: data.deal.expected_expenses,
+    expected_expenses_currency: data.deal.expected_expenses_currency,
+    expected_commission: data.deal.expected_commission,
+    expected_commission_currency: data.deal.expected_commission_currency, notes: data.deal.notes,
+  });
+  const set = <K extends keyof DealFormInput>(key: K, value: DealFormInput[K]) => setForm((current) => ({ ...current, [key]: value }));
+
+  if (editing) return (
+    <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); setError(null); startTransition(async () => { const result = await updateDeal(data.deal.id, form); if (!result.success) return setError(result.error); setEditing(false); router.refresh(); }); }}>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Field label="Title"><input className={inputClass} value={form.title ?? ""} onChange={(e) => set("title", e.target.value || null)} /></Field>
+        <Field label="Status"><select className={inputClass} value={form.status} onChange={(e) => set("status", e.target.value)}>{DEAL_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field>
+        <Field label="Incoterms"><input className={inputClass} value={form.incoterms ?? ""} onChange={(e) => set("incoterms", e.target.value || null)} /></Field>
+        <Field label="Loading port"><input className={inputClass} value={form.loading_port ?? ""} onChange={(e) => set("loading_port", e.target.value || null)} /></Field>
+        <Field label="Destination port"><input className={inputClass} value={form.destination_port ?? ""} onChange={(e) => set("destination_port", e.target.value || null)} /></Field>
+        <Field label="Payment terms"><input className={inputClass} value={form.payment_terms ?? ""} onChange={(e) => set("payment_terms", e.target.value || null)} /></Field>
+        <Field label="Expected shipment date"><input type="date" className={inputClass} value={form.expected_shipment_date ?? ""} onChange={(e) => set("expected_shipment_date", e.target.value || null)} /></Field>
+        <Field label="ETA"><input type="date" className={inputClass} value={form.eta ?? ""} onChange={(e) => set("eta", e.target.value || null)} /></Field>
+        <MoneyInput label="Purchase value" amount={form.purchase_value} currency={form.purchase_currency} onAmount={(value) => set("purchase_value", value)} onCurrency={(value) => set("purchase_currency", value)} />
+        <MoneyInput label="Sales value" amount={form.sales_value} currency={form.sales_currency} onAmount={(value) => set("sales_value", value)} onCurrency={(value) => set("sales_currency", value)} />
+        <MoneyInput label="Expected expenses" amount={form.expected_expenses} currency={form.expected_expenses_currency} onAmount={(value) => set("expected_expenses", value ?? 0)} onCurrency={(value) => set("expected_expenses_currency", value)} />
+        <MoneyInput label="Expected commission" amount={form.expected_commission} currency={form.expected_commission_currency} onAmount={(value) => set("expected_commission", value ?? 0)} onCurrency={(value) => set("expected_commission_currency", value)} />
+      </div>
+      <Field label="Notes"><textarea className={inputClass} rows={3} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value || null)} /></Field>
+      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      <div className="flex gap-2"><button disabled={pending} className="inline-flex items-center gap-2 rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background disabled:opacity-50">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save Deal</button><button type="button" onClick={() => setEditing(false)} className="rounded-md border border-border px-3.5 py-2 text-xs text-foreground">Cancel</button></div>
+    </form>
+  );
+
+  return <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Card label="Company" value={data.deal.company_name ?? "—"} /><Card label="Incoterms" value={data.deal.incoterms ?? "—"} /><Card label="Route" value={[data.deal.loading_port, data.deal.destination_port].filter(Boolean).join(" → ") || "—"} /><Card label="Shipment / ETA" value={[data.deal.expected_shipment_date, data.deal.eta].filter(Boolean).join(" / ") || "—"} /></div><div className="rounded-lg border border-card-border bg-card p-4 text-sm"><p className="text-xs uppercase text-muted-foreground">Payment terms</p><p className="mt-2 text-foreground">{data.deal.payment_terms ?? "Not entered"}</p>{data.deal.notes ? <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{data.deal.notes}</p> : null}</div><button type="button" disabled={!data.deal.canonical_schema_available} onClick={() => setEditing(true)} className="rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background disabled:opacity-40">Edit Deal</button></div>;
+}
+
+function MoneyInput({ label, amount, currency, onAmount, onCurrency }: { label: string; amount: number | null; currency: string | null; onAmount: (value: number | null) => void; onCurrency: (value: string | null) => void }) {
+  return <Field label={label}><div className="grid grid-cols-[1fr_90px] gap-2"><input type="number" min="0" step="any" className={inputClass} value={amount ?? ""} onChange={(e) => onAmount(toNumber(e.target.value))} /><input className={inputClass} maxLength={3} value={currency ?? ""} onChange={(e) => onCurrency(e.target.value.toUpperCase() || null)} placeholder="USD" /></div></Field>;
+}
+
+function Participants({ data, counterparties }: { data: DealWorkspaceData; counterparties: Counterparty[] }) {
+  const router = useRouter(); const [pending, startTransition] = useTransition(); const [error, setError] = useState<string | null>(null); const [counterpartyId, setCounterpartyId] = useState(""); const [role, setRole] = useState("seller");
+  return <div className="space-y-5"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{data.participants.map((item) => <div key={item.id} className="rounded-lg border border-card-border bg-card p-4"><p className="text-xs uppercase text-muted-foreground">{item.role_code.replaceAll("_", " ")}</p><p className="mt-1 font-medium text-foreground">{item.legal_name}</p></div>)}{!data.participants.length ? <p className="text-sm text-muted-foreground">No participants linked.</p> : null}</div><form className="grid gap-3 rounded-lg border border-card-border bg-card p-4 md:grid-cols-[1fr_180px_auto] md:items-end" onSubmit={(event) => { event.preventDefault(); startTransition(async () => { const result = await addDealParticipant({ business_case_id: data.deal.id, counterparty_id: counterpartyId, role_code: role, notes: null }); if (!result.success) return setError(result.error); setCounterpartyId(""); router.refresh(); }); }}><Field label="Counterparty"><select required className={inputClass} value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)}><option value="">Select counterparty</option>{counterparties.map((item) => <option key={item.id} value={item.id}>{item.legal_name}</option>)}</select></Field><Field label="Deal role"><select className={inputClass} value={role} onChange={(e) => setRole(e.target.value)}>{DEAL_PARTICIPANT_ROLES.map((item) => <option key={item}>{item.replaceAll("_", " ")}</option>)}</select></Field><button disabled={pending || !data.deal.canonical_schema_available} className="inline-flex items-center justify-center gap-2 rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Add</button>{error ? <p className="text-sm text-red-300 md:col-span-3">{error}</p> : null}</form></div>;
+}
+
+function Products({ data, products }: { data: DealWorkspaceData; products: Product[] }) {
+  const router = useRouter(); const [pending, startTransition] = useTransition(); const [error, setError] = useState<string | null>(null); const [form, setForm] = useState({ productId: "", description: "", size: "", quantity: "", unit: "MT", net: "", gross: "", purchase: "", sale: "", purchaseCurrency: data.deal.purchase_currency ?? "USD", salesCurrency: data.deal.sales_currency ?? "USD" }); const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  return <div className="space-y-5"><div className="overflow-x-auto rounded-lg border border-card-border bg-card"><table className="w-full min-w-[850px] text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="p-3">Product</th><th className="p-3">Size/grade</th><th className="p-3">Quantity</th><th className="p-3">Net/Gross</th><th className="p-3">Purchase</th><th className="p-3">Sales</th></tr></thead><tbody className="divide-y divide-border">{data.products.map((item) => <tr key={item.id}><td className="p-3"><p className="font-medium">{item.product_name ?? item.product_description ?? "Custom product"}</p><p className="text-xs text-muted-foreground">{item.sku ?? item.scientific_name ?? "—"}</p></td><td className="p-3">{item.size_grade ?? "—"}</td><td className="p-3">{item.quantity} {item.unit}</td><td className="p-3">{item.net_weight ?? "—"} / {item.gross_weight ?? "—"}</td><td className="p-3">{item.purchase_price ?? "—"} {item.purchase_currency ?? ""}</td><td className="p-3">{item.sales_price ?? "—"} {item.sales_currency ?? ""}</td></tr>)}</tbody></table>{!data.products.length ? <p className="p-6 text-center text-sm text-muted-foreground">No product lines.</p> : null}</div><form className="space-y-4 rounded-lg border border-card-border bg-card p-4" onSubmit={(event) => { event.preventDefault(); startTransition(async () => { const result = await addDealProduct({ business_case_id: data.deal.id, product_id: form.productId || null, product_description: form.description || null, size_grade: form.size || null, quantity: toNumber(form.quantity) ?? 0, unit: form.unit, net_weight: toNumber(form.net), gross_weight: toNumber(form.gross), purchase_price: toNumber(form.purchase), sales_price: toNumber(form.sale), purchase_currency: form.purchaseCurrency || null, sales_currency: form.salesCurrency || null }); if (!result.success) return setError(result.error); router.refresh(); }); }}><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Catalog product"><select className={inputClass} value={form.productId} onChange={(e) => set("productId", e.target.value)}><option value="">Custom description</option>{products.map((item) => <option key={item.id} value={item.id}>{item.sku} — {item.name}</option>)}</select></Field><Field label="Description"><input className={inputClass} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field><Field label="Size / grade"><input className={inputClass} value={form.size} onChange={(e) => set("size", e.target.value)} /></Field><Field label="Quantity / unit"><div className="grid grid-cols-[1fr_90px] gap-2"><input required type="number" min="0" step="any" className={inputClass} value={form.quantity} onChange={(e) => set("quantity", e.target.value)} /><select className={inputClass} value={form.unit} onChange={(e) => set("unit", e.target.value)}>{["MT", "kg", "unit", "carton"].map((unit) => <option key={unit}>{unit}</option>)}</select></div></Field><Field label="Net / gross weight"><div className="grid grid-cols-2 gap-2"><input type="number" min="0" step="any" className={inputClass} value={form.net} onChange={(e) => set("net", e.target.value)} /><input type="number" min="0" step="any" className={inputClass} value={form.gross} onChange={(e) => set("gross", e.target.value)} /></div></Field><Field label="Purchase price / currency"><div className="grid grid-cols-[1fr_80px] gap-2"><input type="number" min="0" step="any" className={inputClass} value={form.purchase} onChange={(e) => set("purchase", e.target.value)} /><input className={inputClass} maxLength={3} value={form.purchaseCurrency} onChange={(e) => set("purchaseCurrency", e.target.value.toUpperCase())} /></div></Field><Field label="Sales price / currency"><div className="grid grid-cols-[1fr_80px] gap-2"><input type="number" min="0" step="any" className={inputClass} value={form.sale} onChange={(e) => set("sale", e.target.value)} /><input className={inputClass} maxLength={3} value={form.salesCurrency} onChange={(e) => set("salesCurrency", e.target.value.toUpperCase())} /></div></Field></div>{error ? <p className="text-sm text-red-300">{error}</p> : null}<button disabled={pending || !data.deal.canonical_schema_available} className="inline-flex items-center gap-2 rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Add product line</button></form></div>;
+}
+
+function Contracts({ data }: { data: DealWorkspaceData }) {
+  const router = useRouter(); const [pending, startTransition] = useTransition(); const [error, setError] = useState<string | null>(null); const [roles, setRoles] = useState<Record<string, string>>({});
+  const groups = [{ label: "Sales Contracts", roles: ["sales", "Sale"] }, { label: "Purchase Contracts", roles: ["purchase", "Purchase"] }, { label: "Other Contracts", roles: ["other", "Commission", "Logistics", "Other", "annex", "amendment"] }];
+  const renderContract = (contract: DealWorkspaceData["contracts"][number]) => <div key={contract.id} className="flex flex-col gap-3 rounded-lg border border-card-border bg-card p-4 md:flex-row md:items-center md:justify-between"><div><Link href={`/contracts/${contract.id}`} className="font-mono text-sm font-medium hover:underline">{contract.contract_number}</Link><p className="mt-1 text-xs text-muted-foreground">{contract.title ?? contract.status ?? "No description"} · {contract.amount ?? "—"} {contract.currency ?? ""}</p></div><div className="flex gap-2"><select className={inputClass} value={roles[contract.id] ?? contract.deal_contract_role ?? "other"} onChange={(e) => setRoles((current) => ({ ...current, [contract.id]: e.target.value }))}>{DEAL_CONTRACT_ROLES.map((role) => <option key={role}>{role}</option>)}</select><button type="button" disabled={pending || !data.deal.canonical_schema_available} onClick={() => startTransition(async () => { const result = await classifyDealContract({ dealId: data.deal.id, contractId: contract.id, role: roles[contract.id] ?? contract.deal_contract_role ?? "other" }); if (!result.success) return setError(result.error); router.refresh(); })} className="rounded-md border border-border px-3 py-2 text-xs disabled:opacity-40">Classify</button></div></div>;
+  return <div className="space-y-5"><div className="flex justify-end"><Link href={`/contracts?new=1&business_case_id=${data.deal.id}`} className="rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background">Create linked contract</Link></div>{groups.map((group) => { const items = data.contracts.filter((contract) => group.roles.includes(contract.deal_contract_role ?? "other")); return items.length ? <section key={group.label} className="space-y-2"><h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h4>{items.map(renderContract)}</section> : null; })}{!data.contracts.length ? <p className="rounded-lg border border-card-border bg-card p-8 text-center text-sm text-muted-foreground">No contracts linked.</p> : null}{error ? <p className="text-sm text-red-300">{error}</p> : null}</div>;
+}
+
+function Logistics({ data }: { data: DealWorkspaceData }) {
+  return <div className="space-y-3"><div className="flex justify-end"><Link href="/logistics?new=1" className="rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background">Create shipment</Link></div>{data.shipments.map((item) => <Link key={item.id} href={`/logistics/${item.id}`} className="grid gap-3 rounded-lg border border-card-border bg-card p-4 hover:bg-accent/20 sm:grid-cols-5"><span>{item.container ?? "No container"}</span><span>B/L {item.bl_number ?? "—"}</span><span>{item.vessel ?? "—"}</span><span>ETA {item.eta ?? "—"}</span><span>{item.status ?? "—"}</span></Link>)}{!data.shipments.length ? <p className="rounded-lg border border-card-border bg-card p-8 text-center text-sm text-muted-foreground">No shipments linked.</p> : null}</div>;
+}
+
+function Finance({ data }: { data: DealWorkspaceData }) {
+  const finance = data.finance;
+  const sales = finance.sales.reduce((sum, item) => sum + item.amount, 0);
+  const purchase = finance.purchase.reduce((sum, item) => sum + item.amount, 0);
+  const sameCurrency = finance.sales.length === 1 && finance.purchase.length === 1 && finance.sales[0].currency === finance.purchase[0].currency;
+  const gross = sameCurrency ? sales - purchase : null;
+  const quantity = data.products.reduce((sum, item) => sum + (item.net_weight ?? item.quantity), 0);
+  return <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><Card label="Purchase value" value={moneyList(finance.purchase)} /><Card label="Sales value" value={moneyList(finance.sales)} /><Card label="Gross trading profit" value={gross == null ? "Incomplete" : `${gross.toLocaleString()} ${finance.sales[0].currency}`} /><Card label="Expected expenses" value={moneyList(finance.expenses)} /><Card label="Expected commission" value={moneyList(finance.commissions)} note={data.commissionsCount ? `${data.commissionsCount} linked` : "Commission Engine planned"} /><Card label="Expected profit" value={finance.expectedProfit ? moneyList([finance.expectedProfit]) : "Incomplete"} note={finance.incompleteReason ?? undefined} /><Card label="Profit per kg" value={gross != null && quantity > 0 ? `${(gross / quantity).toFixed(2)} ${finance.sales[0].currency}/kg` : "Incomplete"} /></div>{finance.profitIncomplete ? <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200"><AlertTriangle className="h-4 w-4 shrink-0" /><p>Profit is not calculated across currencies. Values remain separate until an explicit FX rate is available.</p></div> : null}<div className="flex gap-2"><Link href="/finance/invoices" className="rounded-md border border-border px-3.5 py-2 text-xs">Invoices</Link><Link href="/finance/payments" className="rounded-md border border-border px-3.5 py-2 text-xs">Payments</Link></div></div>;
+}
+
+export function DealWorkspace({ data, documents, documentUrls, timeline, activity, counterparties, products }: { data: DealWorkspaceData; documents: ErpDocument[]; documentUrls: Record<string, string>; timeline: TimelineEvent[]; activity: ActivityEntry[]; counterparties: Counterparty[]; products: Product[] }) {
+  const [tab, setTab] = useState<Tab>("overview");
+  let content: React.ReactNode;
+  if (tab === "overview") content = <DealOverview data={data} />;
+  else if (tab === "participants") content = <Participants data={data} counterparties={counterparties} />;
+  else if (tab === "products") content = <Products data={data} products={products} />;
+  else if (tab === "contracts") content = <Contracts data={data} />;
+  else if (tab === "documents") content = <EntityDocumentsPanel entityType="business_case" entityId={data.deal.id} documents={documents} urls={documentUrls} businessCaseId={data.deal.id} companyId={data.deal.company_id} />;
+  else if (tab === "logistics") content = <Logistics data={data} />;
+  else if (tab === "finance") content = <Finance data={data} />;
+  else content = <div className="grid gap-5 xl:grid-cols-2"><EntityTimelinePanel entityType="business_case" entityId={data.deal.id} events={timeline} /><EntityActivityPanel entries={activity} /></div>;
+  return <div className="space-y-6"><nav className="text-sm"><Link href="/business-cases" className="text-muted-foreground hover:text-foreground">Deals</Link><span className="mx-2 text-muted-foreground">/</span><span className="font-mono text-xs">{data.deal.case_number}</span></nav><div><div className="flex items-center gap-3"><h2 className="font-mono text-lg font-semibold">{data.deal.case_number}</h2><span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-zinc-500/20">{data.deal.status ?? "Draft"}</span></div><p className="mt-1 text-sm text-muted-foreground">{data.deal.title ?? "Canonical Deal"}</p></div>{data.schemaWarnings.length ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4"><p className="text-sm font-medium text-amber-200">Compatibility mode</p><ul className="mt-2 list-disc pl-5 text-xs text-amber-100/80">{data.schemaWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}<div className="flex flex-wrap gap-1 border-b border-border pb-3">{TABS.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60"}`}>{item.label}</button>)}</div>{content}</div>;
+}

@@ -449,6 +449,7 @@ export async function createBankAccount(
       company_id: normalized.company_id,
       name: normalized.name.trim(),
       bank_name: nullIfEmpty(normalized.bank_name),
+      bank_address: nullIfEmpty(normalized.bank_address),
       account_number: nullIfEmpty(normalized.account_number),
       iban: nullIfEmpty(normalized.iban),
       swift: nullIfEmpty(normalized.swift),

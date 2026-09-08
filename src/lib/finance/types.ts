@@ -68,6 +68,7 @@ export type BankAccountFormInput = {
   company_id: string;
   name: string;
   bank_name: string | null;
+  bank_address: string | null;
   account_number: string | null;
   iban: string | null;
   swift: string | null;
@@ -126,6 +127,7 @@ export const emptyBankAccountForm = (): BankAccountFormInput => ({
   company_id: "",
   name: "",
   bank_name: null,
+  bank_address: null,
   account_number: null,
   iban: null,
   swift: null,

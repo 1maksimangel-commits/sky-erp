@@ -56,6 +56,7 @@ export type BankAccount = {
   company_id: string;
   name: string;
   bank_name: string | null;
+  bank_address: string | null;
   account_number: string | null;
   iban: string | null;
   swift: string | null;
@@ -360,12 +361,30 @@ export async function getBankAccounts(): Promise<
     .from("bank_accounts")
     .select(
       `
-      id, company_id, name, bank_name, account_number, iban, swift,
+      id, company_id, name, bank_name, bank_address, account_number, iban, swift,
       currency, opening_balance, current_balance, is_active,
       company:company_id ( id, name )
     `
     )
     .order("name");
+
+  if (error && /bank_address|schema cache|PGRST204|42703/i.test(error.message)) {
+    const fallback = await supabase
+      .from("bank_accounts")
+      .select(`
+        id, company_id, name, bank_name, account_number, iban, swift,
+        currency, opening_balance, current_balance, is_active,
+        company:company_id ( id, name )
+      `)
+      .order("name");
+    if (fallback.error) return { data: null, error: formatLoadError(fallback.error.message) };
+    return {
+      data: ((fallback.data ?? []) as unknown as Array<Omit<BankAccount, "bank_address">>).map(
+        (row) => ({ ...row, bank_address: null })
+      ),
+      error: null,
+    };
+  }
 
   if (error) {
     return { data: null, error: formatLoadError(error.message) };
@@ -376,6 +395,7 @@ export async function getBankAccounts(): Promise<
     company_id: string;
     name: string;
     bank_name: string | null;
+    bank_address: string | null;
     account_number: string | null;
     iban: string | null;
     swift: string | null;
@@ -392,6 +412,7 @@ export async function getBankAccounts(): Promise<
       company_id: row.company_id,
       name: row.name,
       bank_name: row.bank_name,
+      bank_address: row.bank_address,
       account_number: row.account_number,
       iban: row.iban,
       swift: row.swift,

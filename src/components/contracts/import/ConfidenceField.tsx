@@ -27,7 +27,7 @@ export function ConfidenceField({
       ? "bg-emerald-500/20 text-emerald-300"
       : level === "medium"
         ? "bg-amber-500/20 text-amber-300"
-        : "bg-red-500/20 text-red-300";
+        : "bg-muted text-muted-foreground";
 
   return (
     <div className="space-y-1.5">
@@ -49,7 +49,7 @@ export function ConfidenceField({
           ) : (
             <AlertTriangle className="h-3 w-3" />
           )}
-          {level}
+          {level === "low" ? "review" : level}
         </button>
       </div>
       <div

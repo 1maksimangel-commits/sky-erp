@@ -38,30 +38,33 @@ export function validateImportReview(input: {
     company_id: input.payload.matches.companyId,
     buyer_id: input.payload.matches.buyerId,
     supplier_id: input.payload.matches.supplierId,
+    status: "Draft",
+  }, {
+    allowIncompleteDraft: true,
   });
   if (formError) {
     errors.push({ level: "error", code: "form", message: formError });
   }
 
   if (!input.payload.matches.companyId) {
-    errors.push({
-      level: "error",
+    warnings.push({
+      level: "warning",
       code: "company",
-      message: "Internal company must be selected.",
+      message: "Internal company was not selected and can be completed later.",
     });
   }
   if (!input.payload.matches.buyerId) {
-    errors.push({
-      level: "error",
+    warnings.push({
+      level: "warning",
       code: "buyer",
-      message: "Buyer must be selected or created.",
+      message: "Buyer was not selected and can be completed later.",
     });
   }
   if (!input.payload.matches.supplierId) {
-    errors.push({
-      level: "error",
+    warnings.push({
+      level: "warning",
       code: "supplier",
-      message: "Supplier must be selected or created.",
+      message: "Supplier was not selected and can be completed later.",
     });
   }
   if (
@@ -84,7 +87,10 @@ export function validateImportReview(input: {
     });
   }
 
-  if (!SUPPORTED_CURRENCIES.has((form.currency || "").toUpperCase())) {
+  if (
+    form.currency?.trim() &&
+    !SUPPORTED_CURRENCIES.has(form.currency.toUpperCase())
+  ) {
     errors.push({
       level: "error",
       code: "currency",
@@ -109,15 +115,15 @@ export function validateImportReview(input: {
     const advance = asNumber(extraction.commercial.advance_payment_percent);
     const balance = asNumber(extraction.commercial.balance_payment_percent);
     if (advance != null && advance > 100) {
-      errors.push({
-        level: "error",
+      warnings.push({
+        level: "warning",
         code: "advance_pct",
         message: "Advance payment percent cannot exceed 100%.",
       });
     }
     if (balance != null && balance > 100) {
-      errors.push({
-        level: "error",
+      warnings.push({
+        level: "warning",
         code: "balance_pct",
         message: "Balance payment percent cannot exceed 100%.",
       });
@@ -186,17 +192,17 @@ export function validateImportReview(input: {
   for (const line of input.payload.productLines) {
     if (line.action === "ignore") continue;
     if (line.action === "link" && !line.productId) {
-      errors.push({
-        level: "error",
+      warnings.push({
+        level: "warning",
         code: "product_link",
-        message: `Product line ${line.lineIndex + 1} needs a matched product.`,
+        message: `Product line ${line.lineIndex + 1} was not matched and will remain unlinked.`,
       });
     }
     if (line.action === "create" && !line.create?.name?.trim()) {
-      errors.push({
-        level: "error",
+      warnings.push({
+        level: "warning",
         code: "product_create",
-        message: `Product line ${line.lineIndex + 1} needs a name to create.`,
+        message: `Product line ${line.lineIndex + 1} has no name and will remain unlinked.`,
       });
     }
     if (line.quantity < 0) {
@@ -214,25 +220,21 @@ export function validateImportReview(input: {
 export function extractionToFormDefaults(
   extraction: ContractExtractionResult
 ): ContractFormInput {
-  const status = asString(extraction.general.status) || "Draft";
-  const normalizedStatus = ["Draft", "Active", "Closed", "Cancelled"].includes(
-    status
-  )
-    ? status
-    : "Draft";
-
   return {
     contract_number: asString(extraction.general.contract_number) ?? "",
     title: asString(extraction.general.title),
     company_id: null,
     buyer_id: null,
     supplier_id: null,
+    consignee_id: null,
     business_case_id: null,
-    currency: (asString(extraction.commercial.currency) || "USD").toUpperCase(),
+    deal_id: null,
+    business_role: null,
+    currency: (asString(extraction.commercial.currency) || "").toUpperCase(),
     amount: asNumber(extraction.commercial.total_amount),
     incoterms: asString(extraction.commercial.incoterms),
     contract_date: asString(extraction.general.contract_date),
     expiry_date: asString(extraction.general.expiry_date),
-    status: normalizedStatus,
+    status: "Draft",
   };
 }

@@ -92,10 +92,10 @@ const routes: { match: RegExp; meta: (pathname: string) => RouteMeta }[] = [
   {
     match: /^\/business-cases\/[^/]+/,
     meta: () => ({
-      title: "Business Case",
+      title: "Deal",
       description: "Opportunity details and conversion path.",
       breadcrumbs: [
-        { label: "Business Cases", href: "/business-cases" },
+        { label: "Deals", href: "/business-cases" },
         { label: "Detail" },
       ],
     }),
@@ -103,9 +103,9 @@ const routes: { match: RegExp; meta: (pathname: string) => RouteMeta }[] = [
   {
     match: /^\/business-cases\/?$/,
     meta: () => ({
-      title: "Business Cases",
+      title: "Deals",
       description: "Track commercial opportunities before contract creation.",
-      breadcrumbs: [{ label: "Business Cases" }],
+      breadcrumbs: [{ label: "Deals" }],
     }),
   },
   {
@@ -277,6 +277,14 @@ const routes: { match: RegExp; meta: (pathname: string) => RouteMeta }[] = [
       title: "Documents",
       description: "Enterprise document library and entity attachments.",
       breadcrumbs: [{ label: "Documents" }],
+    }),
+  },
+  {
+    match: /^\/document-templates\/?$/,
+    meta: () => ({
+      title: "Document Templates",
+      description: "Manage reusable contract and operational document templates.",
+      breadcrumbs: [{ label: "Document Templates" }],
     }),
   },
   {

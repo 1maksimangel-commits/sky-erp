@@ -99,7 +99,7 @@ export async function createCounterpartyFromImport(input: {
     code: "",
     legal_name: input.legalName,
     short_name: null,
-    counterparty_type: input.type || "Other",
+    counterparty_type: (input.type || "buyer").toLowerCase(),
     country: null,
     city: null,
     address: input.address ?? null,
@@ -108,6 +108,15 @@ export async function createCounterpartyFromImport(input: {
     email: input.email ?? null,
     phone: input.phone ?? null,
     website: null,
+    authorized_signer_name: null,
+    authorized_signer_title: null,
+    bank_account_name: null,
+    bank_name: null,
+    bank_address: null,
+    account_number: null,
+    iban: null,
+    swift: null,
+    bank_currency: "USD",
     is_active: true,
   };
 
@@ -256,14 +265,33 @@ export async function confirmContractImport(
     };
   }
 
+  const extractedContractNumber =
+    payload.form.contract_number.trim() ||
+    `IMPORT-DRAFT-${payload.importId.slice(0, 8).toUpperCase()}`;
+  const { data: numberConflict, error: numberLookupError } = await supabase
+    .from("contracts")
+    .select("id")
+    .eq("contract_number", extractedContractNumber)
+    .limit(1)
+    .maybeSingle();
+
+  if (numberLookupError) {
+    return { success: false, error: numberLookupError.message };
+  }
+
+  const contractNumber = numberConflict
+    ? `${extractedContractNumber}-DRAFT-${payload.importId.slice(0, 8).toUpperCase()}`
+    : extractedContractNumber;
   const form = {
     ...payload.form,
+    contract_number: contractNumber,
+    status: "Draft",
     company_id: payload.matches.companyId,
     buyer_id: payload.matches.buyerId,
     supplier_id: payload.matches.supplierId,
   };
 
-  const created = await createContract(form);
+  const created = await createContract(form, { workflow: "import-draft" });
   if (!created.success || !created.id) {
     return {
       success: false,
@@ -277,6 +305,8 @@ export async function confirmContractImport(
   try {
     for (const line of payload.productLines) {
       if (line.action === "ignore") continue;
+      if (line.action === "link" && !line.productId) continue;
+      if (line.action === "create" && !line.create?.name?.trim()) continue;
 
       let productId = line.productId;
       if (line.action === "create" && line.create) {
@@ -360,7 +390,7 @@ export async function confirmContractImport(
       action: "imported",
       eventType: "contract_imported_from_pdf",
       title: "Contract imported from PDF",
-      summary: `Contract ${payload.form.contract_number} imported from PDF`,
+      summary: `Contract ${contractNumber} imported from PDF`,
       oldValue: {
         extraction: extraction,
       },
@@ -372,7 +402,7 @@ export async function confirmContractImport(
       },
       notify: {
         title: "Contract imported from PDF",
-        body: payload.form.contract_number,
+        body: contractNumber,
         category: "contract",
         href: `/contracts/${contractId}`,
       },

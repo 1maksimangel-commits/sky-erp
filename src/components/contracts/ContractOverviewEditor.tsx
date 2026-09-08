@@ -32,7 +32,10 @@ type FormState = {
   company_id: string;
   buyer_id: string;
   supplier_id: string;
+  consignee_id: string;
   business_case_id: string;
+  deal_id: string;
+  business_role: string;
   currency: string;
   amount: string;
   incoterms: string;
@@ -53,7 +56,10 @@ function toFormState(contract: Contract): FormState {
     company_id: input.company_id ?? "",
     buyer_id: input.buyer_id ?? "",
     supplier_id: input.supplier_id ?? "",
+    consignee_id: input.consignee_id ?? "",
     business_case_id: input.business_case_id ?? "",
+    deal_id: input.deal_id ?? "",
+    business_role: input.business_role ?? "",
     currency: input.currency ?? "USD",
     amount: input.amount != null ? String(input.amount) : "",
     incoterms: input.incoterms ?? "",
@@ -73,7 +79,10 @@ function toFormInput(form: FormState): ContractFormInput {
     company_id: form.company_id,
     buyer_id: form.buyer_id,
     supplier_id: form.supplier_id,
+    consignee_id: form.consignee_id,
     business_case_id: form.business_case_id.trim() || null,
+    deal_id: form.deal_id.trim() || null,
+    business_role: form.business_role.trim() || null,
     currency: form.currency.trim() || "USD",
     amount:
       parsedAmount != null && Number.isFinite(parsedAmount) ? parsedAmount : null,
@@ -259,7 +268,7 @@ export function ContractOverviewEditor({
         </Field>
 
         <Field
-          label="Company"
+          label="Seller"
           editing={editing}
           value={
             contract.company?.id ? (
@@ -323,15 +332,15 @@ export function ContractOverviewEditor({
         </Field>
 
         <Field
-          label="Supplier"
+          label="Consignee / грузополучатель"
           editing={editing}
           value={
-            contract.supplier?.id ? (
+            contract.consignee?.id ? (
               <Link
-                href={`/counterparties/${contract.supplier.id}`}
+                href={`/counterparties/${contract.consignee.id}`}
                 className="text-foreground underline-offset-4 hover:underline"
               >
-                {contract.supplier.legal_name}
+                {contract.consignee.legal_name}
               </Link>
             ) : (
               "—"
@@ -339,16 +348,16 @@ export function ContractOverviewEditor({
           }
         >
           <select
-            value={form.supplier_id}
+            value={form.consignee_id}
             onChange={(e) =>
               setForm((current) => ({
                 ...current,
-                supplier_id: e.target.value,
+                consignee_id: e.target.value,
               }))
             }
             className={inputClassName}
           >
-            <option value="">Select supplier</option>
+            <option value="">Select consignee</option>
             {counterparties.map((counterparty) => (
               <option key={counterparty.id} value={counterparty.id}>
                 {counterparty.legal_name}
@@ -375,6 +384,18 @@ export function ContractOverviewEditor({
             <option value="CNY">CNY</option>
             <option value="JPY">JPY</option>
           </select>
+        </Field>
+
+        <Field label="Business role" editing={editing} value={contract.business_role ?? "—"}>
+          <select value={form.business_role} onChange={(e) => setForm((current) => ({ ...current, business_role: e.target.value }))} className={inputClassName}>
+            <option value="">Not specified</option>
+            {(["Purchase", "Sale", "Commission", "Logistics", "Other"] as const).map((role) => <option key={role} value={role}>{role}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Deal link (optional)" editing={editing} value={contract.deal_id ? <Link href={`/business-cases/${contract.deal_id}`} className="underline-offset-4 hover:underline">{contract.deal_id}</Link> : "Unlinked"}>
+          <input type="text" placeholder="Deal ID" value={form.deal_id} onChange={(e) => setForm((current) => ({ ...current, deal_id: e.target.value }))} className={inputClassName} />
+          <p className="mt-1 text-xs text-muted-foreground">Paste an existing Deal ID, or leave empty.</p>
         </Field>
 
         <Field

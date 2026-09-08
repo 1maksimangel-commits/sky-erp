@@ -91,11 +91,12 @@ export function ContractDeleteDialog({
             Delete contract
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Are you sure you want to delete{" "}
+            Are you sure you want to remove{" "}
             <span className="font-mono text-foreground">
               {contract.contract_number}
             </span>
-            ? This action cannot be undone.
+            ? It will disappear from active contract lists. Related documents and
+            business records will be preserved.
           </p>
         </div>
 

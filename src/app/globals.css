@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+.template-editor-content { min-height: 297mm; max-width: 210mm; margin: 0 auto; background: white; color: #111827; padding: 20mm; box-shadow: 0 8px 30px rgb(0 0 0 / 20%); }
+.template-editor-content table { width: 100%; border-collapse: collapse; }
+.template-editor-content td, .template-editor-content th { border: 1px solid #9ca3af; padding: 4px; }
+.template-a4-preview { box-sizing: border-box; width: 210mm; min-height: 297mm; max-width: 100%; margin: 1rem auto; background: #fff; color: #111827; box-shadow: 0 8px 30px rgb(0 0 0 / 25%); }
+.template-a4-landscape { width: 297mm; min-height: 210mm; }
+
 :root {
   --background: #09090b;
   --foreground: #fafafa;
@@ -26,14 +32,14 @@
   --color-card: var(--card);
   --color-card-border: var(--card-border);
   --color-elevated: var(--elevated);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: "ss01" on, "cv11" on;
   letter-spacing: -0.01em;
 }

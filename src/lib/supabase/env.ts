@@ -17,13 +17,11 @@ export function getSupabasePublicEnv():
     };
   }
 
-  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url.replace(/\/$/, ""))) {
-    // Allow custom domains, but reject localhost / empty / clearly malformed values.
-    if (
-      !/^https?:\/\//i.test(url) ||
-      /localhost|127\.0\.0\.1/i.test(url) ||
-      url.includes(" ")
-    ) {
+  const normalizedUrl = url.replace(/\/$/, "");
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1):54321$/i.test(normalizedUrl);
+  const isDevelopment = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(normalizedUrl)) {
+    if (!/^https?:\/\//i.test(url) || url.includes(" ") || (isLocalhost && !isDevelopment) || (!isLocalhost && /localhost|127\.0\.0\.1/i.test(url)) || (!isDevelopment && !/^https:\/\//i.test(url))) {
       return {
         ok: false,
         error: `NEXT_PUBLIC_SUPABASE_URL is malformed or points at localhost: ${url}`,

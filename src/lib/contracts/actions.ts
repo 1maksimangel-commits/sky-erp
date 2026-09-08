@@ -33,18 +33,33 @@ function formatSupabaseError(error: { code?: string; message: string }): string 
     return "Permission denied. Unable to save contract.";
   }
 
+  if (error.code === "23503") {
+    return "This contract is still referenced by related records and cannot be removed.";
+  }
+
   return error.message || "Unable to save contract. Please try again.";
 }
 
-function formInputToRow(input: ContractFormInput) {
+type CreateContractOptions = {
+  workflow?: "standard" | "import-draft";
+};
+
+function formInputToRow(
+  input: ContractFormInput,
+  options: CreateContractOptions = {}
+) {
+  const importDraft = options.workflow === "import-draft";
   return {
     contract_number: input.contract_number.trim(),
     title: nullIfEmpty(input.title),
-    company_id: input.company_id!.trim(),
-    buyer_id: input.buyer_id!.trim(),
-    supplier_id: input.supplier_id!.trim(),
+    company_id: nullIfEmpty(input.company_id),
+    buyer_id: nullIfEmpty(input.buyer_id),
+    supplier_id: nullIfEmpty(input.supplier_id),
+    consignee_id: nullIfEmpty(input.consignee_id),
     business_case_id: nullIfEmpty(input.business_case_id),
-    currency: nullIfEmpty(input.currency) ?? "USD",
+    deal_id: nullIfEmpty(input.deal_id ?? input.business_case_id),
+    business_role: nullIfEmpty(input.business_role),
+    currency: importDraft ? nullIfEmpty(input.currency) : nullIfEmpty(input.currency) ?? "USD",
     amount: input.amount,
     incoterms: nullIfEmpty(input.incoterms),
     contract_date: nullIfEmpty(input.contract_date),
@@ -62,7 +77,8 @@ async function assertUniqueContractNumber(
   let query = supabase
     .from("contracts")
     .select("id")
-    .eq("contract_number", contractNumber);
+    .eq("contract_number", contractNumber)
+    .limit(1);
 
   if (excludeId) {
     query = query.neq("id", excludeId);
@@ -96,14 +112,20 @@ function revalidateContractPaths(contractId?: string) {
 }
 
 export async function createContract(
-  input: ContractFormInput
+  input: ContractFormInput,
+  options: CreateContractOptions = {}
 ): Promise<ContractActionResult> {
   const denied = assertCan("contracts.write");
   if (denied) {
     return { success: false, error: denied };
   }
 
-  const validationError = validateContractFormInput(input);
+  const importDraft =
+    options.workflow === "import-draft" &&
+    input.status.trim().toLowerCase() === "draft";
+  const validationError = validateContractFormInput(input, {
+    allowIncompleteDraft: importDraft,
+  });
   if (validationError) {
     return { success: false, error: validationError };
   }
@@ -117,8 +139,8 @@ export async function createContract(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("contracts")
-    .insert(formInputToRow(input))
-    .select("id, contract_number, status, business_case_id")
+    .insert(formInputToRow(input, options))
+    .select("id, contract_number, status, business_case_id, deal_id, business_role")
     .single();
 
   if (error) {
@@ -208,13 +230,42 @@ export async function updateContract(
 }
 
 export async function deleteContract(id: string): Promise<ContractActionResult> {
-  const supabase = await createClient();
+  const denied = assertCan("contracts.write");
+  if (denied) {
+    return { success: false, error: denied };
+  }
 
-  const { error } = await supabase.from("contracts").delete().eq("id", id);
+  if (!id?.trim()) {
+    return { success: false, error: "Contract id is required." };
+  }
+
+  const supabase = await createClient();
+  const { data: rows, error } = await supabase.rpc("soft_delete_contract", {
+    target_id: id,
+  });
 
   if (error) {
     return { success: false, error: formatSupabaseError(error) };
   }
+
+  const data = Array.isArray(rows) ? rows[0] : rows;
+  if (!data) {
+    return {
+      success: false,
+      error: "Contract was not found, was already removed, or you do not have permission.",
+    };
+  }
+
+  await recordEntityEvent({
+    entityType: "contract",
+    entityId: data.id,
+    action: "deleted",
+    eventType: "contract_deleted",
+    title: "Contract removed",
+    summary: `Contract ${data.contract_number} removed from active records`,
+    oldValue: { status: data.status, deleted_at: null },
+    newValue: { status: data.status, deleted_at: data.deleted_at },
+  });
 
   revalidateContractPaths(id);
   return { success: true };

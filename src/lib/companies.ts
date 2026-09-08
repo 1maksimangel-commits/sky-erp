@@ -2,11 +2,32 @@ import { createClient } from "@/lib/supabase/server";
 
 export type Company = {
   id: string;
+  business_role: "Seller" | "Buyer" | "Agent" | "Other" | null;
   name: string;
   code: string;
   short_name: string | null;
   country: string | null;
   city: string | null;
+  address: string | null;
+  tax_id: string | null;
+  registration_number: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  authorized_signer_name: string | null;
+  authorized_signer_title: string | null;
+  seal_document_id: string | null;
+  signature_document_id: string | null;
+  bank_accounts: Array<{
+    id: string;
+    name: string;
+    bank_name: string | null;
+    bank_address: string | null;
+    account_number: string | null;
+    iban: string | null;
+    swift: string | null;
+    currency: string;
+  }>;
   is_active: boolean;
 };
 
@@ -19,37 +40,85 @@ export type CompaniesCountResult =
   | { count: null; error: string };
 
 const companyColumns =
-  "id, name, code, short_name, country, city, is_active" as const;
+  "id, name, code, short_name, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, seal_document_id, signature_document_id, business_role, is_active, bank_accounts ( id, name, bank_name, bank_address, account_number, iban, swift, currency )" as const;
+const legacyCompanyColumns =
+  "id, name, code, short_name, country, city, tax_id, registration_number, email, phone, website, is_active, bank_accounts ( id, name, bank_name, account_number, iban, swift, currency )" as const;
+
+function normalizeCompany(row: Record<string, unknown>): Company {
+  return {
+    ...(row as unknown as Omit<Company, "authorized_signer_name" | "authorized_signer_title" | "bank_accounts">),
+    authorized_signer_name:
+      typeof row.authorized_signer_name === "string" ? row.authorized_signer_name : null,
+    authorized_signer_title:
+      typeof row.authorized_signer_title === "string" ? row.authorized_signer_title : null,
+    seal_document_id: typeof row.seal_document_id === "string" ? row.seal_document_id : null,
+    signature_document_id:
+      typeof row.signature_document_id === "string" ? row.signature_document_id : null,
+    business_role: ["Seller", "Buyer", "Agent", "Other"].includes(String(row.business_role))
+      ? (row.business_role as Company["business_role"])
+      : null,
+    bank_accounts: Array.isArray(row.bank_accounts) ? row.bank_accounts : [],
+    address: typeof row.address === "string" ? row.address : null,
+  };
+}
+
+function missingSignerColumns(error: { message: string }): boolean {
+  return /authorized_signer_|seal_document_id|signature_document_id|address|bank_address|schema cache|PGRST204|42703/i.test(error.message);
+}
 
 export async function getCompanies(): Promise<CompaniesResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const result = await supabase
     .from("companies")
     .select(companyColumns)
     .order("name");
+
+  if (result.error && missingSignerColumns(result.error)) {
+    const fallback = await supabase.from("companies").select(legacyCompanyColumns).order("name");
+    if (fallback.error) return { data: null, error: fallback.error.message };
+    return {
+      data: (fallback.data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)),
+      error: null,
+    };
+  }
+  const { data, error } = result;
 
   if (error) {
     return { data: null, error: error.message };
   }
 
-  return { data: data ?? [], error: null };
+  return { data: (data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)), error: null };
 }
 
 export async function getActiveCompanies(): Promise<CompaniesResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const result = await supabase
     .from("companies")
     .select(companyColumns)
     .eq("is_active", true)
     .order("name");
 
+  if (result.error && missingSignerColumns(result.error)) {
+    const fallback = await supabase
+      .from("companies")
+      .select(legacyCompanyColumns)
+      .eq("is_active", true)
+      .order("name");
+    if (fallback.error) return { data: null, error: fallback.error.message };
+    return {
+      data: (fallback.data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)),
+      error: null,
+    };
+  }
+  const { data, error } = result;
+
   if (error) {
     return { data: null, error: error.message };
   }
 
-  return { data: data ?? [], error: null };
+  return { data: (data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)), error: null };
 }
 
 export type CompanyResult =
@@ -59,11 +128,23 @@ export type CompanyResult =
 export async function getCompanyById(id: string): Promise<CompanyResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const result = await supabase
     .from("companies")
     .select(companyColumns)
     .eq("id", id)
     .maybeSingle();
+
+  if (result.error && missingSignerColumns(result.error)) {
+    const fallback = await supabase
+      .from("companies")
+      .select(legacyCompanyColumns)
+      .eq("id", id)
+      .maybeSingle();
+    if (fallback.error) return { data: null, error: fallback.error.message };
+    if (!fallback.data) return { data: null, error: "Company not found." };
+    return { data: normalizeCompany(fallback.data as Record<string, unknown>), error: null };
+  }
+  const { data, error } = result;
 
   if (error) {
     return { data: null, error: error.message };
@@ -73,7 +154,7 @@ export async function getCompanyById(id: string): Promise<CompanyResult> {
     return { data: null, error: "Company not found." };
   }
 
-  return { data: data as Company, error: null };
+  return { data: normalizeCompany(data as Record<string, unknown>), error: null };
 }
 
 export async function getCompaniesCount(): Promise<CompaniesCountResult> {

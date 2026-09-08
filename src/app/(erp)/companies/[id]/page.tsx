@@ -41,6 +41,9 @@ export default async function CompanyDetailPage({
           <DetailItem label="Short Name" value={company.short_name} />
           <DetailItem label="Country" value={company.country} />
           <DetailItem label="City" value={company.city} />
+          <DetailItem label="Address" value={company.address} />
+          <DetailItem label="Authorized signer" value={company.authorized_signer_name} />
+          <DetailItem label="Signer position" value={company.authorized_signer_title} />
           <DetailItem
             label="Status"
             value={company.is_active ? "Active" : "Inactive"}
