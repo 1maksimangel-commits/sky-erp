@@ -1,5 +1,9 @@
 "use server";
 
+import { assertCan } from "@/lib/platform/permissions";
+import { requireCoreCompany } from "@/lib/core/ownership";
+import { counterpartyInputSchema, validationError, uuid } from "@/lib/core/validation";
+import { getCompanyById } from "@/lib/companies";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { CounterpartyFormInput } from "@/lib/counterparties/types";
@@ -69,9 +73,12 @@ function formInputToRow(input: CounterpartyFormInput) {
 
 export async function addCompanyAsCounterparty(companyId: string): Promise<CreateCounterpartyResult> {
   try {
+    const denied = await assertCan("counterparties.write");
+    if (denied) return { success: false, error: denied };
+    await requireCoreCompany(companyId);
     const supabase = await createClient();
-    const { data: company, error: companyError } = await supabase.from("companies").select("id, name, code, short_name, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, bank_accounts ( name, bank_name, bank_address, account_number, iban, swift, currency )").eq("id", companyId).maybeSingle();
-    if (companyError || !company) return { success: false, error: companyError?.message ?? "Company not found." };
+    const { data: company, error: companyError } = await getCompanyById(companyId);
+    if (companyError || !company) return { success: false, error: companyError ?? "Company not found." };
     const bank = Array.isArray(company.bank_accounts) ? company.bank_accounts[0] : null;
     const existing = await supabase.from("counterparties").select("id").eq("source_company_id", companyId).maybeSingle();
     // If the link was removed earlier, reuse the old row by its company code
@@ -96,32 +103,45 @@ export async function addCompanyAsCounterparty(companyId: string): Promise<Creat
 }
 
 export async function unlinkCompanyFromCounterparty(counterpartyId: string): Promise<CreateCounterpartyResult> {
+  const denied = await assertCan("counterparties.write");
+  if (denied) return { success: false, error: denied };
+  if (!uuid.safeParse(counterpartyId).success) return { success: false, error: "Invalid counterparty ID." };
   try {
     const supabase = await createClient();
-    const { error } = await supabase.from("counterparties").update({ source_company_id: null }).eq("id", counterpartyId);
-    if (error) return { success: false, error: error.message };
+    const { data, error } = await supabase.from("counterparties").update({ source_company_id: null }).eq("id", counterpartyId).select("id").maybeSingle();
+    if (error || !data) return { success: false, error: error?.message ?? "Counterparty not found or access denied." };
     revalidatePath("/counterparties"); revalidatePath("/companies");
     return { success: true };
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Unable to remove company link." }; }
 }
 
-export async function deleteCounterparty(counterpartyId: string): Promise<CreateCounterpartyResult> {
+/** Compatibility export: archive instead of deleting commercial history. */
+export async function deleteCounterparty(id: string): Promise<CreateCounterpartyResult> {
+  return setCounterpartyActive(id, false);
+}
+export async function setCounterpartyActive(id: string, active: boolean): Promise<CreateCounterpartyResult> {
+  const denied = await assertCan("counterparties.write");
+  if (denied) return { success: false, error: denied };
+  if (!uuid.safeParse(id).success || typeof active !== "boolean") return { success: false, error: "Invalid counterparty status request." };
+  const client = await createClient();
+  const { data, error } = await client.from("counterparties").update({ is_active: active }).eq("id", id).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Counterparty not found or access denied." };
+  revalidatePath("/counterparties"); revalidatePath(`/counterparties/${id}`);
+  return { success: true, id };
+}
+
+export async function updateCounterparty(id: string, input: CounterpartyFormInput): Promise<CreateCounterpartyResult> {
   try {
-    if (!counterpartyId?.trim()) return { success: false, error: "Counterparty was not specified." };
-    const supabase = await createClient();
-    const { error } = await supabase.from("counterparties").delete().eq("id", counterpartyId);
-    if (error) {
-      if (error.code === "23503") return { success: false, error: "This counterparty is used in business records and cannot be deleted." };
-      return { success: false, error: error.message || "Unable to delete counterparty." };
-    }
-    revalidatePath("/counterparties");
-    revalidatePath("/companies");
-    revalidatePath("/contracts");
-    revalidatePath("/business-cases");
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Unable to delete counterparty." };
-  }
+    const denied = await assertCan("counterparties.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(counterpartyInputSchema, input);
+    if (invalid || !uuid.safeParse(id).success) return { success: false, error: invalid ?? "Invalid counterparty ID." };
+    const client = await createClient();
+    const { data, error } = await client.from("counterparties").update(formInputToRow(input)).eq("id", id).select("id").maybeSingle();
+    if (error || !data) return { success: false, error: error ? formatSupabaseError(error) : "Counterparty not found or access denied." };
+    revalidatePath("/counterparties"); revalidatePath(`/counterparties/${id}`);
+    return { success: true, id };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Unable to update counterparty." }; }
 }
 
 export async function createCounterparty(
@@ -137,6 +157,11 @@ export async function createCounterparty(
       };
     }
 
+    const denied = await assertCan("counterparties.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(counterpartyInputSchema, input);
+    if (invalid) return { success: false, error: invalid };
+    const companyId = await requireCoreCompany(input.source_company_id);
     const legalName = (input.legal_name ?? "").trim();
     const counterpartyType = input.counterparty_type?.trim() ?? "";
     const code = (input.code ?? "").trim();
@@ -169,7 +194,7 @@ export async function createCounterparty(
 
     const { data, error } = await supabase
       .from("counterparties")
-      .insert(formInputToRow({ ...input, legal_name: legalName, code }))
+      .insert({ ...formInputToRow({ ...input, legal_name: legalName, code }), company_id: companyId })
       .select("id")
       .single();
 

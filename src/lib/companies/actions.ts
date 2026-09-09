@@ -5,6 +5,7 @@ import type { CompanyFormInput } from "@/lib/companies/types";
 import { createClient } from "@/lib/supabase/server";
 import { uploadDocument } from "@/lib/documents/actions";
 import { assertCan } from "@/lib/platform/permissions";
+import { companyInputSchema, validationError, uuid } from "@/lib/core/validation";
 
 export type CreateCompanyResult =
   | { success: true; id?: string }
@@ -99,7 +100,7 @@ function hasBankDetails(input: CompanyFormInput): boolean {
   );
 }
 
-function bankInputToRow(companyId: string, input: CompanyFormInput) {
+function bankInputToRow(companyId: string | null, input: CompanyFormInput) {
   return {
     company_id: companyId,
     name: input.bank_account_name?.trim() || `${input.name.trim()} ${input.bank_currency || "USD"}`,
@@ -114,156 +115,38 @@ function bankInputToRow(companyId: string, input: CompanyFormInput) {
   };
 }
 
-export async function createCompany(
-  input: CompanyFormInput
-): Promise<CreateCompanyResult> {
-  const denied = await assertCan("companies.write");
-  if (denied) return { success: false, error: denied };
-  // Never throw: Next.js 16 can surface "TypeError: args.map is not a function"
-  // when server actions rethrow.
+async function saveCompany(id: string | null, input: CompanyFormInput): Promise<CreateCompanyResult> {
   try {
-    if (!input || typeof input !== "object") {
-      return {
-        success: false,
-        error: "Invalid company payload. Please reload and try again.",
-      };
-    }
-
-    const code = (input.code ?? "").trim();
-    const name = (input.name ?? "").trim();
-
-    if (!code) {
-      return { success: false, error: "Code is required." };
-    }
-
-    if (!name) {
-      return { success: false, error: "Name is required." };
-    }
-
-    const supabase = await createClient();
-
-    const { data: existing, error: lookupError } = await supabase
-      .from("companies")
-      .select("id")
-      .eq("code", code)
-      .maybeSingle();
-
-    if (lookupError) {
-      return { success: false, error: formatSupabaseError(lookupError) };
-    }
-
-    if (existing) {
-      return { success: false, error: "Code must be unique." };
-    }
-
-    const { data, error } = await supabase
-      .from("companies")
-      .insert(formInputToRow({ ...input, code, name }))
-      .select("id")
-      .single();
-
-    if (error) {
-      return { success: false, error: formatSupabaseError(error) };
-    }
-
-    if (hasBankDetails(input)) {
-      const { error: bankError } = await supabase
-        .from("bank_accounts")
-        .insert({ ...bankInputToRow(data.id, input), opening_balance: 0, current_balance: 0 });
-      if (bankError) {
-        return {
-          success: false,
-          error: `Company was created, but bank details could not be saved: ${bankError.message}`,
-        };
-      }
-    }
-
-    revalidatePath("/companies");
-    revalidatePath("/contracts");
-    revalidatePath("/business-cases");
-    return { success: true, id: data.id };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to save company.";
-    return { success: false, error: message };
-  }
+    const denied = await assertCan("companies.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(companyInputSchema, input);
+    if (invalid) return { success: false, error: invalid };
+    if (id && !uuid.safeParse(id).success) return { success: false, error: "Invalid Company ID." };
+    const client = await createClient();
+    const { data, error } = await client.rpc("save_company_core", {
+      p_id: id, p_company: formInputToRow(input),
+      p_bank: hasBankDetails(input) ? bankInputToRow(id, input) : null,
+    });
+    if (error) return { success: false, error: formatSupabaseError(error) };
+    if (typeof data !== "string") return { success: false, error: "Company save did not return an ID." };
+    revalidatePath("/companies"); revalidatePath(`/companies/${data}`);
+    return { success: true, id: data };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Unable to save Company." }; }
 }
 
-export async function updateCompany(
-  id: string,
-  input: CompanyFormInput
-): Promise<UpdateCompanyResult> {
+export async function createCompany(input: CompanyFormInput): Promise<CreateCompanyResult> {
+  return saveCompany(null, input);
+}
+export async function updateCompany(id: string, input: CompanyFormInput): Promise<UpdateCompanyResult> {
+  return saveCompany(id, input);
+}
+export async function setCompanyActive(id: string, active: boolean): Promise<CreateCompanyResult> {
   const denied = await assertCan("companies.write");
   if (denied) return { success: false, error: denied };
-  try {
-    if (!id?.trim() || !input || typeof input !== "object") {
-      return { success: false, error: "Invalid company payload. Please reload and try again." };
-    }
-    const code = (input.code ?? "").trim();
-    const name = (input.name ?? "").trim();
-    if (!code) return { success: false, error: "Code is required." };
-    if (!name) return { success: false, error: "Name is required." };
-
-    const supabase = await createClient();
-    const { data: currentCompany, error: currentCompanyError } = await supabase
-      .from("companies")
-      .select("id")
-      .eq("id", id)
-      .maybeSingle();
-    if (currentCompanyError) return { success: false, error: formatSupabaseError(currentCompanyError) };
-    if (!currentCompany) return { success: false, error: "Company was not found." };
-
-    const { data: duplicate, error: lookupError } = await supabase
-      .from("companies")
-      .select("id")
-      .eq("code", code)
-      .neq("id", id)
-      .maybeSingle();
-    if (lookupError) return { success: false, error: formatSupabaseError(lookupError) };
-    if (duplicate) return { success: false, error: "Code must be unique." };
-
-    const { error } = await supabase
-      .from("companies")
-      .update(formInputToRow({ ...input, code, name }))
-      .eq("id", id);
-    if (error) {
-      if (error.code === "42501") {
-        return { success: false, error: "Permission denied. Company administration requires an active Admin account." };
-      }
-      return { success: false, error: formatSupabaseError(error) };
-    }
-    if (hasBankDetails(input)) {
-      const { data: existingBank, error: bankLookupError } = await supabase
-        .from("bank_accounts")
-        .select("id")
-        .eq("company_id", id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (bankLookupError) return { success: false, error: bankLookupError.message };
-      const bankRow = bankInputToRow(id, input);
-      const bankResult = existingBank
-        ? await supabase.from("bank_accounts").update(bankRow).eq("id", existingBank.id)
-        : await supabase
-            .from("bank_accounts")
-            .insert({ ...bankRow, opening_balance: 0, current_balance: 0 });
-      if (bankResult.error) {
-        return {
-          success: false,
-          error: `Company was updated, but bank details could not be saved: ${bankResult.error.message}`,
-        };
-      }
-    }
-
-    revalidatePath("/companies");
-    revalidatePath(`/companies/${id}`);
-    revalidatePath("/contracts");
-    revalidatePath("/business-cases");
-    return { success: true, id };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unable to update company.",
-    };
-  }
+  if (!uuid.safeParse(id).success || typeof active !== "boolean") return { success: false, error: "Invalid Company status request." };
+  const client = await createClient();
+  const { data, error } = await client.from("companies").update({ is_active: active }).eq("id", id).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Company not found or access denied." };
+  revalidatePath("/companies"); revalidatePath(`/companies/${id}`);
+  return { success: true, id };
 }

@@ -28,6 +28,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
+    ".next-core-replay/types/**/*.ts",
+    ".next-core-replay/dev/types/**/*.ts",
     "**/*.mts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.mjs"]

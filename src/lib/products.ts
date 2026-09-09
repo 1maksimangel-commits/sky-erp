@@ -1,18 +1,15 @@
+import { getActiveCompanyId } from "@/lib/platform/company-scope";
 import { createClient } from "@/lib/supabase/server";
 
-export type Product = {
+type ProductInput = import("@/lib/products/types").ProductFormInput;
+export type Product = Partial<ProductInput> & Pick<ProductInput,
+  "sku" | "name" | "scientific_name" | "category" | "country" | "size" |
+  "purchase_price" | "sale_price" | "currency" | "image_url" | "is_active"
+> & {
   id: string;
-  sku: string;
-  name: string;
-  scientific_name: string | null;
-  category: string | null;
-  country: string | null;
-  size: string | null;
-  purchase_price: number | null;
-  sale_price: number | null;
-  currency: string | null;
-  image_url: string | null;
-  is_active: boolean;
+  company_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export type ProductStats = {
@@ -27,7 +24,7 @@ export type ProductsResult =
   | { data: null; stats: null; error: string };
 
 const productColumns =
-  "id, sku, name, scientific_name, category, country, size, purchase_price, sale_price, currency, image_url, is_active" as const;
+  "id, company_id, created_at, updated_at, sku, code, name, scientific_name, category, species, origin, country, brand, size, size_grade, unit, glaze, package_type, net_weight, gross_weight, hs_code, description, purchase_price, sale_price, currency, image_url, is_active" as const;
 
 function computeStats(products: Product[]): ProductStats {
   const categories = new Set(
@@ -45,16 +42,16 @@ function computeStats(products: Product[]): ProductStats {
 export async function getProducts(): Promise<ProductsResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(productColumns)
-    .order("name");
+  let query = supabase.from("products").select(productColumns).order("name");
+  const companyId = await getActiveCompanyId();
+  if (companyId) query = query.eq("company_id", companyId);
+  const { data, error } = await query;
 
   if (error) {
     return { data: null, stats: null, error: error.message };
   }
 
-  const products = data ?? [];
+  const products = (data ?? []).map(row => ({ ...row, sku: row.sku ?? "" }));
 
   return {
     data: products,
@@ -84,5 +81,5 @@ export async function getProductById(id: string): Promise<ProductResult> {
     return { data: null, error: "Product not found." };
   }
 
-  return { data: data as Product, error: null };
+  return { data: { ...data, sku: data.sku ?? "" }, error: null };
 }

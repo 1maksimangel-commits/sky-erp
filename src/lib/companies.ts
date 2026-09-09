@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export type Company = {
   id: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   business_role: "Seller" | "Buyer" | "Agent" | "Other" | null;
   name: string;
   code: string;
@@ -40,9 +42,7 @@ export type CompaniesCountResult =
   | { count: null; error: string };
 
 const companyColumns =
-  "id, name, code, short_name, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, seal_document_id, signature_document_id, business_role, is_active, bank_accounts ( id, name, bank_name, bank_address, account_number, iban, swift, currency )" as const;
-const legacyCompanyColumns =
-  "id, name, code, short_name, country, city, tax_id, registration_number, email, phone, website, is_active, bank_accounts ( id, name, bank_name, account_number, iban, swift, currency )" as const;
+  "id, created_at, updated_at, name, code, short_name, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, seal_document_id, signature_document_id, business_role, is_active, bank_accounts ( id, name, bank_name, bank_address, account_number, iban, swift, currency )" as const;
 
 function normalizeCompany(row: Record<string, unknown>): Company {
   return {
@@ -62,9 +62,6 @@ function normalizeCompany(row: Record<string, unknown>): Company {
   };
 }
 
-function missingSignerColumns(error: { message: string }): boolean {
-  return /authorized_signer_|seal_document_id|signature_document_id|address|bank_address|schema cache|PGRST204|42703/i.test(error.message);
-}
 
 export async function getCompanies(): Promise<CompaniesResult> {
   const supabase = await createClient();
@@ -72,16 +69,10 @@ export async function getCompanies(): Promise<CompaniesResult> {
   const result = await supabase
     .from("companies")
     .select(companyColumns)
+    .order("created_at", { referencedTable: "bank_accounts" })
+    .order("id", { referencedTable: "bank_accounts" })
     .order("name");
 
-  if (result.error && missingSignerColumns(result.error)) {
-    const fallback = await supabase.from("companies").select(legacyCompanyColumns).order("name");
-    if (fallback.error) return { data: null, error: fallback.error.message };
-    return {
-      data: (fallback.data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)),
-      error: null,
-    };
-  }
   const { data, error } = result;
 
   if (error) {
@@ -97,21 +88,11 @@ export async function getActiveCompanies(): Promise<CompaniesResult> {
   const result = await supabase
     .from("companies")
     .select(companyColumns)
+    .order("created_at", { referencedTable: "bank_accounts" })
+    .order("id", { referencedTable: "bank_accounts" })
     .eq("is_active", true)
     .order("name");
 
-  if (result.error && missingSignerColumns(result.error)) {
-    const fallback = await supabase
-      .from("companies")
-      .select(legacyCompanyColumns)
-      .eq("is_active", true)
-      .order("name");
-    if (fallback.error) return { data: null, error: fallback.error.message };
-    return {
-      data: (fallback.data ?? []).map((row) => normalizeCompany(row as Record<string, unknown>)),
-      error: null,
-    };
-  }
   const { data, error } = result;
 
   if (error) {
@@ -131,19 +112,11 @@ export async function getCompanyById(id: string): Promise<CompanyResult> {
   const result = await supabase
     .from("companies")
     .select(companyColumns)
+    .order("created_at", { referencedTable: "bank_accounts" })
+    .order("id", { referencedTable: "bank_accounts" })
     .eq("id", id)
     .maybeSingle();
 
-  if (result.error && missingSignerColumns(result.error)) {
-    const fallback = await supabase
-      .from("companies")
-      .select(legacyCompanyColumns)
-      .eq("id", id)
-      .maybeSingle();
-    if (fallback.error) return { data: null, error: fallback.error.message };
-    if (!fallback.data) return { data: null, error: "Company not found." };
-    return { data: normalizeCompany(fallback.data as Record<string, unknown>), error: null };
-  }
   const { data, error } = result;
 
   if (error) {

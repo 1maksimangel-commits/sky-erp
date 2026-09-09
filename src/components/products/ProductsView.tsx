@@ -19,6 +19,8 @@ import { ProductImportModal } from "@/components/products/ProductImportModal";
 import { TableShell } from "@/components/ui/TableShell";
 import { Toast } from "@/components/ui/Toast";
 import type { Product, ProductStats } from "@/lib/products";
+import { emptyProductForm } from "@/lib/products/types";
+import { setProductActive } from "@/lib/products/actions";
 import { useSearchParamOpen } from "@/lib/ui/open-state";
 
 type ProductsViewProps = {
@@ -148,6 +150,7 @@ export function ProductsView({ products, stats, error }: ProductsViewProps) {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const searchParams = useSearchParams();
+  const [editing, setEditing] = useState<Product | null>(null);
   const [formOpen, setFormOpen] = useSearchParamOpen();
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -222,9 +225,13 @@ export function ProductsView({ products, stats, error }: ProductsViewProps) {
       </PageActions>
 
       <ProductFormModal
-        open={formOpen}
+        key={editing?.id ?? "create"}
+        existingId={editing?.id}
+        initialValues={editing ? { ...emptyProductForm(), ...editing } : undefined}
+        open={formOpen || Boolean(editing)}
         onClose={() => {
           setFormOpen(false);
+          setEditing(null);
           if (searchParams.get("new") === "1") router.replace("/products");
         }}
         onSaved={() => {
@@ -397,6 +404,8 @@ export function ProductsView({ products, stats, error }: ProductsViewProps) {
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge isActive={product.is_active} />
+                        <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); setEditing(product); }}>Edit</button>
+                        <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); void setProductActive(product.id, !product.is_active).then(result => { setToast(result.success ? "Status updated." : result.error); if (result.success) router.refresh(); }); }}>{product.is_active ? "Archive" : "Restore"}</button>
                       </td>
                     </tr>
                   ))}

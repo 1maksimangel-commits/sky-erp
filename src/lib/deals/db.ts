@@ -1,144 +1,53 @@
-import { getBusinessCaseById } from "@/lib/business-cases";
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildExpectedFinanceSummary,
-} from "@/lib/deals/validation";
-import type {
-  CurrencyAmount,
-  Deal,
-  DealContract,
-  DealParticipant,
-  DealProduct,
-  DealShipment,
-  DealWorkspaceData,
-} from "@/lib/deals/types";
+import { getActiveCompanyId } from "@/lib/platform/company-scope";
+import { buildExpectedFinanceSummary } from "@/lib/deals/validation";
+import type { CurrencyAmount, Deal, DealContract, DealParticipant, DealProduct, DealShipment, DealWorkspaceData } from "@/lib/deals/types";
 
-type Relation = { id?: string; name?: string; legal_name?: string } | Array<{
-  id?: string;
-  name?: string;
-  legal_name?: string;
-}> | null;
-
-function firstRelation(value: Relation) {
-  return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
+type Relation = { id?: string; name?: string; legal_name?: string; sku?: string; scientific_name?: string } | Array<{ id?: string; name?: string; legal_name?: string; sku?: string; scientific_name?: string }> | null;
+function firstRelation(value: Relation) { return Array.isArray(value) ? value[0] ?? null : value; }
 function numberOrNull(value: unknown): number | null {
   if (value == null || value === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+  const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null;
 }
-
+// Reserved for read-only compatibility with later-phase modules.
 function isMissingCanonicalSchema(message: string): boolean {
-  return /deal_|loading_port|purchase_currency|sales_currency|expected_|deal_contract_role|parent_contract_id|schema cache|PGRST204|PGRST205|42703|does not exist/i.test(
-    message
-  );
+  return /schema cache|PGRST204|PGRST205|42703|does not exist/i.test(message);
 }
+const dealColumns = `
+  id, case_number, case_type, title, status, archived_at, company_id, buyer_id, supplier_id,
+  consignee_id, contract_number, contract_date, currency, contract_amount,
+  incoterms, loading_port, destination_port, payment_terms, expected_shipment_date,
+  eta, purchase_currency, sales_currency, purchase_value, sales_value,
+  expected_expenses, expected_expenses_currency, expected_commission, expected_commission_currency,
+  notes, created_at, updated_at,
+  company:company_id(id,name), buyer:buyer_id(id,legal_name),
+  supplier:supplier_id(id,legal_name), consignee:consignee_id(id,legal_name)
+` as const;
 
-async function getCanonicalDeal(id: string): Promise<{ data: Deal | null; warning: string | null }> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("business_cases")
-    .select(`
-      id, case_number, title, status, case_type, company_id, buyer_id, supplier_id,
-      consignee_id, incoterms, loading_port, destination_port, payment_terms,
-      expected_shipment_date, eta, purchase_currency, sales_currency,
-      purchase_value, sales_value, expected_expenses, expected_expenses_currency,
-      expected_commission, expected_commission_currency, notes, created_at, updated_at,
-      company:company_id ( id, name ), buyer:buyer_id ( id, legal_name ),
-      supplier:supplier_id ( id, legal_name ), consignee:consignee_id ( id, legal_name )
-    `)
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!error && data) {
-    const row = data as unknown as Record<string, unknown>;
-    const company = firstRelation(row.company as Relation);
-    const buyer = firstRelation(row.buyer as Relation);
-    const supplier = firstRelation(row.supplier as Relation);
-    const consignee = firstRelation(row.consignee as Relation);
-    return {
-      data: {
-        id: String(row.id),
-        case_number: String(row.case_number),
-        title: (row.title as string | null) ?? null,
-        status: (row.status as string | null) ?? null,
-        case_type: (row.case_type as string | null) ?? null,
-        company_id: (row.company_id as string | null) ?? null,
-        buyer_id: (row.buyer_id as string | null) ?? null,
-        supplier_id: (row.supplier_id as string | null) ?? null,
-        consignee_id: (row.consignee_id as string | null) ?? null,
-        company_name: company?.name ?? null,
-        buyer_name: buyer?.legal_name ?? null,
-        supplier_name: supplier?.legal_name ?? null,
-        consignee_name: consignee?.legal_name ?? null,
-        incoterms: (row.incoterms as string | null) ?? null,
-        loading_port: (row.loading_port as string | null) ?? null,
-        destination_port: (row.destination_port as string | null) ?? null,
-        payment_terms: (row.payment_terms as string | null) ?? null,
-        expected_shipment_date: (row.expected_shipment_date as string | null) ?? null,
-        eta: (row.eta as string | null) ?? null,
-        purchase_currency: (row.purchase_currency as string | null) ?? null,
-        sales_currency: (row.sales_currency as string | null) ?? null,
-        purchase_value: numberOrNull(row.purchase_value),
-        sales_value: numberOrNull(row.sales_value),
-        expected_expenses: numberOrNull(row.expected_expenses) ?? 0,
-        expected_expenses_currency:
-          (row.expected_expenses_currency as string | null) ?? null,
-        expected_commission: numberOrNull(row.expected_commission) ?? 0,
-        expected_commission_currency:
-          (row.expected_commission_currency as string | null) ?? null,
-        notes: (row.notes as string | null) ?? null,
-        created_at: (row.created_at as string | null) ?? null,
-        updated_at: (row.updated_at as string | null) ?? null,
-        canonical_schema_available: true,
-      },
-      warning: null,
-    };
+export async function getCanonicalDeals(id?: string): Promise<{ data: Deal[]; error: string | null }> {
+  const client = await createClient();
+  let query = client.from("business_cases").select(dealColumns).order("created_at", { ascending: false });
+  if (id) query = query.eq("id", id);
+  else {
+    const companyId = await getActiveCompanyId();
+    if (companyId) query = query.eq("company_id", companyId);
   }
-
-  if (error && !isMissingCanonicalSchema(error.message)) {
-    return { data: null, warning: error.message };
-  }
-
-  const legacy = await getBusinessCaseById(id);
-  if (!legacy.data) return { data: null, warning: legacy.error };
-  return {
-    data: {
-      id: legacy.data.id,
-      case_number: legacy.data.case_number,
-      title: legacy.data.title,
-      status: legacy.data.status,
-      case_type: legacy.data.case_type,
-      company_id: null,
-      buyer_id: null,
-      supplier_id: null,
-      consignee_id: null,
-      company_name: legacy.data.company?.name ?? null,
-      buyer_name: legacy.data.buyer?.legal_name ?? null,
-      supplier_name: legacy.data.supplier?.legal_name ?? null,
-      consignee_name: legacy.data.consignee?.legal_name ?? null,
-      incoterms: legacy.data.incoterms,
-      loading_port: null,
-      destination_port: null,
-      payment_terms: null,
-      expected_shipment_date: null,
-      eta: null,
-      purchase_currency: legacy.data.currency,
-      sales_currency: legacy.data.currency,
-      purchase_value: null,
-      sales_value: legacy.data.contract_amount,
-      expected_expenses: 0,
-      expected_expenses_currency: legacy.data.currency,
-      expected_commission: 0,
-      expected_commission_currency: legacy.data.currency,
-      notes: null,
-      created_at: null,
-      updated_at: null,
-      canonical_schema_available: false,
-    },
-    warning: "Canonical Deal migration is not applied; showing legacy Business Case data.",
-  };
+  const { data, error } = await query;
+  if (error) return { data: [], error: error.message };
+  return { data: (data ?? []).map(row => ({
+    ...row, company_name: firstRelation(row.company)?.name ?? null,
+    buyer_name: firstRelation(row.buyer)?.legal_name ?? null,
+    supplier_name: firstRelation(row.supplier)?.legal_name ?? null,
+    consignee_name: firstRelation(row.consignee)?.legal_name ?? null,
+    purchase_value: numberOrNull(row.purchase_value), sales_value: numberOrNull(row.sales_value),
+    expected_expenses: numberOrNull(row.expected_expenses) ?? 0,
+    expected_commission: numberOrNull(row.expected_commission) ?? 0,
+    canonical_schema_available: true,
+  })), error: null };
+}
+export async function getCanonicalDeal(id: string): Promise<{ data: Deal | null; warning: string | null }> {
+  const result = await getCanonicalDeals(id);
+  return { data: result.data[0] ?? null, warning: result.error };
 }
 
 async function loadParticipants(deal: Deal): Promise<{ data: DealParticipant[]; warning: string | null }> {
@@ -163,35 +72,25 @@ async function loadParticipants(deal: Deal): Promise<{ data: DealParticipant[]; 
       warning: null,
     };
   }
-  if (!isMissingCanonicalSchema(error.message)) return { data: [], warning: error.message };
-
-  const fallback: DealParticipant[] = [];
-  const add = (id: string | null, role: string, name: string | null) => {
-    if (id && name) fallback.push({ id: `legacy-${role}`, counterparty_id: id, role_code: role, notes: null, legal_name: name });
-  };
-  add(deal.supplier_id, "seller", deal.supplier_name);
-  add(deal.buyer_id, "buyer", deal.buyer_name);
-  add(deal.consignee_id, "consignee", deal.consignee_name);
-  return { data: fallback, warning: "Normalized Deal participants require the Sprint 1 migration." };
+  return { data: [], warning: error.message };
 }
 
-async function loadProducts(dealId: string): Promise<{ data: DealProduct[]; warning: string | null }> {
+export async function loadDealProducts(dealIds: string[]): Promise<{ data: DealProduct[]; warning: string | null }> {
+  if (!dealIds.length) return { data: [], warning: null };
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("deal_products")
     .select(`
-      id, product_id, product_description, size_grade, quantity, unit, net_weight,
+      id, business_case_id, notes, product_id, product_description, size_grade, quantity, unit, net_weight,
       gross_weight, purchase_price, sales_price, purchase_currency, sales_currency,
       product:product_id ( sku, name, scientific_name )
     `)
-    .eq("business_case_id", dealId)
+    .in("business_case_id", dealIds)
     .order("created_at");
   if (error) {
     return {
       data: [],
-      warning: isMissingCanonicalSchema(error.message)
-        ? "Deal product lines require the Sprint 1 migration."
-        : error.message,
+      warning: error.message,
     };
   }
   return {
@@ -199,6 +98,8 @@ async function loadProducts(dealId: string): Promise<{ data: DealProduct[]; warn
       const product = firstRelation(item.product as Relation);
       return {
         id: item.id,
+        business_case_id: item.business_case_id,
+        notes: item.notes,
         product_id: item.product_id,
         sku: (product as { sku?: string } | null)?.sku ?? null,
         product_name: (product as { name?: string } | null)?.name ?? null,
@@ -306,11 +207,12 @@ export async function getDealWorkspaceData(
   const deal = dealResult.data;
   const [participants, products, contracts, shipments, commissions] = await Promise.all([
     loadParticipants(deal),
-    loadProducts(id),
+    loadDealProducts([id]),
     loadContracts(id),
     loadShipments(id),
     loadCommissions(id),
   ]);
+  if (participants.warning || products.warning) return { data: null, error: participants.warning ?? products.warning };
   const warnings = [
     dealResult.warning,
     participants.warning,

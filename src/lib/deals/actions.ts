@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { dealCoreSchema, validationError, uuid } from "@/lib/core/validation";
+import { requireCoreCompany, validateCoreParties } from "@/lib/core/ownership";
+import type { BusinessCaseFormInput } from "@/lib/business-cases/types";
 import { assertCan } from "@/lib/platform/permissions";
 import { assertCompanyAccess } from "@/lib/platform/company-scope";
 import { recordEntityEvent } from "@/lib/platform/audit";
@@ -33,16 +36,18 @@ function schemaMessage(message: string): string {
 }
 
 async function authorizeDealWrite(id: string) {
+  if (!uuid.safeParse(id).success) return { error: "Invalid Deal ID.", companyId: null };
   const denied = await assertCan("business_cases.write");
   if (denied) return { error: denied, companyId: null };
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("business_cases")
-    .select("id, company_id")
+    .select("id, company_id, archived_at")
     .eq("id", id)
     .maybeSingle();
   if (error) return { error: error.message, companyId: null };
   if (!data) return { error: "Deal not found.", companyId: null };
+  if (data.archived_at) return { error: "Restore the archived Deal before editing.", companyId: data.company_id };
   const companyError = await assertCompanyAccess(data.company_id);
   return { error: companyError, companyId: data.company_id };
 }
@@ -82,7 +87,8 @@ export async function updateDeal(
       nullIfEmpty(input.expected_commission_currency)?.toUpperCase() ?? null,
     notes: nullIfEmpty(input.notes),
   };
-  const { error } = await supabase.from("business_cases").update(row).eq("id", id);
+  const { data: saved, error } = await supabase.from("business_cases").update(row).eq("id", id).select("id").maybeSingle();
+  if (!error && !saved) return { success: false, error: "Deal not found or access denied." };
   if (error) return { success: false, error: schemaMessage(error.message) };
   await recordEntityEvent({
     entityType: "business_case",
@@ -133,16 +139,22 @@ export async function addDealParticipant(
     relatedEntityId: input.counterparty_id,
   });
   revalidatePath(`/business-cases/${input.business_case_id}`);
+  revalidatePath("/business-cases");
   return { success: true, id: data.id };
 }
 
-export async function addDealProduct(input: DealProductInput): Promise<DealActionResult> {
+async function saveDealProduct(id: string | null, input: DealProductInput): Promise<DealActionResult> {
   const validation = validateDealProduct(input);
   if (validation) return { success: false, error: validation };
   const access = await authorizeDealWrite(input.business_case_id);
   if (access.error) return { success: false, error: access.error };
   const supabase = await createClient();
+  if (input.product_id) {
+    const { data: product, error: productError } = await supabase.from("products").select("id,company_id,is_active").eq("id", input.product_id).maybeSingle();
+    if (productError || !product || product.company_id !== access.companyId || !product.is_active) return { success: false, error: productError?.message ?? "Product must be active and belong to the Deal Company." };
+  }
   const row = {
+    notes: nullIfEmpty(input.notes),
     business_case_id: input.business_case_id,
     product_id: nullIfEmpty(input.product_id),
     product_description: nullIfEmpty(input.product_description),
@@ -156,18 +168,17 @@ export async function addDealProduct(input: DealProductInput): Promise<DealActio
     purchase_currency: nullIfEmpty(input.purchase_currency)?.toUpperCase() ?? null,
     sales_currency: nullIfEmpty(input.sales_currency)?.toUpperCase() ?? null,
   };
-  const { data, error } = await supabase
-    .from("deal_products")
-    .insert(row)
-    .select("id")
-    .single();
-  if (error) return { success: false, error: schemaMessage(error.message) };
+  if (id && !uuid.safeParse(id).success) return { success: false, error: "Invalid product line ID." };
+  const { data, error } = id
+    ? await supabase.from("deal_products").update(row).eq("id", id).eq("business_case_id", input.business_case_id).select("id").maybeSingle()
+    : await supabase.from("deal_products").insert(row).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error ? schemaMessage(error.message) : "Product line not found or access denied." };
   await recordEntityEvent({
     entityType: "business_case",
     entityId: input.business_case_id,
-    action: "product_added",
+    action: id ? "product_updated" : "product_added",
     eventType: "deal_product_changed",
-    title: "Deal product added",
+    title: id ? "Deal product updated" : "Deal product added",
     summary: `${input.quantity} ${input.unit} added to Deal`,
     newValue: row,
     relatedEntityType: input.product_id ? "product" : null,
@@ -228,4 +239,64 @@ export async function classifyDealContract(input: {
   revalidatePath(`/business-cases/${input.dealId}`);
   revalidatePath(`/contracts/${input.contractId}`);
   return { success: true, id: input.contractId };
+}
+
+export async function addDealProduct(input: DealProductInput): Promise<DealActionResult> { return saveDealProduct(null, input); }
+export async function updateDealProduct(id: string, input: DealProductInput): Promise<DealActionResult> { return saveDealProduct(id, input); }
+export async function removeDealProduct(dealId: string, id: string): Promise<DealActionResult> {
+  if (!uuid.safeParse(id).success) return { success: false, error: "Invalid product line ID." };
+  const access = await authorizeDealWrite(dealId);
+  if (access.error) return { success: false, error: access.error };
+  const client = await createClient();
+  // A contracted line is business history, not an editable draft row.
+  const linked = await client.from("contract_products").select("id").eq("deal_product_id",id).limit(1);
+  if (linked.error) return { success: false, error: linked.error.message };
+  if (linked.data?.length) return { success: false, error: "This line is linked to a contract and cannot be removed." };
+  const { data, error } = await client.from("deal_products").delete().eq("id",id).eq("business_case_id",dealId).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Product line not found or access denied." };
+  revalidatePath(`/business-cases/${dealId}`); revalidatePath("/business-cases");
+  return { success: true, id };
+}
+
+export async function saveDealCore(id: string | null, input: BusinessCaseFormInput): Promise<DealActionResult> {
+  try {
+    const denied = await assertCan("business_cases.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(dealCoreSchema,input);
+    if (invalid || (id && !uuid.safeParse(id).success)) return { success: false, error: invalid ?? "Invalid Deal ID." };
+    const companyId = await requireCoreCompany(input.company_id);
+    const partiesError = await validateCoreParties(companyId,[input.supplier_id,input.buyer_id,input.consignee_id]);
+    if (partiesError) return { success: false, error: partiesError };
+    if (id) {
+      const access = await authorizeDealWrite(id);
+      if (access.error) return { success: false, error: access.error };
+      if (access.companyId !== companyId) return { success: false, error: "Deal ownership cannot be changed." };
+    }
+    const client = await createClient();
+    const row = {
+      case_number: input.case_number.trim(), case_type: nullIfEmpty(input.case_type), title: nullIfEmpty(input.title),
+      company_id: companyId, buyer_id: input.buyer_id, supplier_id: input.supplier_id, consignee_id: input.consignee_id,
+      status: input.status, contract_number: nullIfEmpty(input.contract_number), contract_date: input.contract_date,
+      currency: input.currency.trim().toUpperCase(), contract_amount: input.contract_amount,
+      incoterms: nullIfEmpty(input.incoterms), notes: nullIfEmpty(input.notes),
+      expected_shipment_date: input.expected_shipment_date ?? null, eta: input.eta ?? null,
+    };
+    const { data, error } = id
+      ? await client.from("business_cases").update(row).eq("id",id).select("id").maybeSingle()
+      : await client.from("business_cases").insert(row).select("id").maybeSingle();
+    if (error || !data) return { success: false, error: error?.message ?? "Deal not found or access denied." };
+    await recordEntityEvent({ entityType:"business_case",entityId:data.id,action:id ? "updated" : "created",eventType:"deal_updated",title:id ? "Deal updated" : "Deal created",summary:row.case_number });
+    revalidatePath("/business-cases"); revalidatePath(`/business-cases/${data.id}`);
+    return { success: true, id: data.id };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Unable to save Deal." }; }
+}
+export async function setDealArchived(id: string, archived: boolean): Promise<DealActionResult> {
+  const denied = await assertCan("business_cases.write");
+  if (denied) return { success: false, error: denied };
+  if (!uuid.safeParse(id).success || typeof archived !== "boolean") return { success: false, error: "Invalid Deal archive request." };
+  const client = await createClient();
+  const { data, error } = await client.from("business_cases").update({ archived_at: archived ? new Date().toISOString() : null }).eq("id",id).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Deal not found or access denied." };
+  revalidatePath("/business-cases"); revalidatePath(`/business-cases/${id}`);
+  return { success: true, id };
 }

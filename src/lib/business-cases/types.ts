@@ -1,4 +1,7 @@
 export type BusinessCaseFormInput = {
+  notes?: string | null;
+  expected_shipment_date?: string | null;
+  eta?: string | null;
   case_number: string;
   case_type: string | null;
   title: string | null;

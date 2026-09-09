@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createCounterparty } from "@/lib/counterparties/actions";
+import { createCounterparty, updateCounterparty } from "@/lib/counterparties/actions";
 import {
   COUNTERPARTY_TYPES,
   emptyCounterpartyForm,
@@ -12,6 +12,8 @@ import { useResetWhenOpened } from "@/lib/ui/open-state";
 import type { Company } from "@/lib/companies";
 
 type CounterpartyFormModalProps = {
+  existingId?: string;
+  initialValues?: CounterpartyFormInput;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -55,7 +57,7 @@ function toFormState(values: CounterpartyFormInput): FormState {
     code: values.code,
     legal_name: values.legal_name,
     short_name: values.short_name ?? "",
-    counterparty_type: values.counterparty_type ?? "",
+    counterparty_type: COUNTERPARTY_TYPES.find(type => type.toLowerCase() === values.counterparty_type?.toLowerCase()) ?? values.counterparty_type ?? "",
     country: values.country ?? "",
     city: values.city ?? "",
     address: values.address ?? "",
@@ -127,18 +129,20 @@ function Field({
 
 export function CounterpartyFormModal({
   open,
+  existingId,
+  initialValues,
   onClose,
   onSaved,
   companies = [],
 }: CounterpartyFormModalProps) {
   const [form, setForm] = useState<FormState>(() =>
-    toFormState(emptyCounterpartyForm())
+    toFormState(initialValues ?? emptyCounterpartyForm())
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useResetWhenOpened(open, () => {
-    setForm(toFormState(emptyCounterpartyForm()));
+    setForm(toFormState(initialValues ?? emptyCounterpartyForm()));
     setError(null);
   });
 
@@ -221,7 +225,7 @@ export function CounterpartyFormModal({
     setSaving(true);
     setError(null);
 
-    const result = await createCounterparty(toFormInput(form));
+    const result = await (existingId ? updateCounterparty(existingId, toFormInput(form)) : createCounterparty(toFormInput(form)));
 
     setSaving(false);
 
@@ -255,7 +259,7 @@ export function CounterpartyFormModal({
               id="counterparty-form-title"
               className="text-base font-semibold text-foreground"
             >
-              New Counterparty
+              {existingId ? "Edit Counterparty" : "New Counterparty"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Add a buyer, supplier, or business partner

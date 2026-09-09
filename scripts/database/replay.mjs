@@ -6,6 +6,8 @@ import { verifyHistory, sha256 } from './history.mjs';
 import { collectSourceContract } from './source-contract.mjs';
 import { compareContract } from './compare.mjs';
 import { verifyAuthHttp } from './auth-http.mjs';
+import { verifyCoreHttp } from './core-http.mjs';
+import { verifyCoreUi } from './core-ui.mjs';
 
 // No connection-string, project-ref, workdir, or remote-target arguments accepted.
 // Only this process's newly created, randomly named local Supabase is reachable.
@@ -83,11 +85,13 @@ try {
   console.log('Auth/RLS: table grants, company isolation, authenticated CRUD, RPCs, Admin, readonly, disabled and anon assertions passed.');
   const localStatus = JSON.parse(await run('supabase', ['status', '--output', 'json', '--workdir', workdir], undefined, true));
   await verifyAuthHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
+  const core = await verifyCoreHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
+  await verifyCoreUi({ ...core, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   verifiedResult = {
     status: 'PASS', cli: version, migrations: migrations.map(m => ({ name: m.name, sha256: sha256(m.sql) })),
     tablesChecked: contract.tables.length, selectsChecked: contract.selects.length,
     columnUsesChecked: contract.columns.length, rpcNamesChecked: [...new Set(contract.rpcs.map(r => r.name))],
-    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS',
+    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS', coreCrudTests: 'PASS', coreUiHttpTests: 'PASS',
   };
 } catch (error) {
   console.error(error.message);

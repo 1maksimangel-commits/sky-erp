@@ -6,6 +6,7 @@ export const DEAL_STATUSES = [
   "Payment",
   "Completed",
   "Cancelled",
+  "Closed",
 ] as const;
 
 export type DealStatus = (typeof DEAL_STATUSES)[number];
@@ -31,6 +32,11 @@ export const DEAL_CONTRACT_ROLES = [
 ] as const;
 
 export type Deal = {
+  archived_at: string | null;
+  contract_number: string | null;
+  contract_date: string | null;
+  currency: string | null;
+  contract_amount: number | null;
   id: string;
   case_number: string;
   title: string | null;
@@ -73,6 +79,8 @@ export type DealParticipant = {
 };
 
 export type DealProduct = {
+  business_case_id?: string;
+  notes?: string | null;
   id: string;
   product_id: string | null;
   sku: string | null;
@@ -161,6 +169,7 @@ export type DealParticipantInput = {
 };
 
 export type DealProductInput = {
+  notes?: string | null;
   business_case_id: string;
   product_id: string | null;
   product_description: string | null;

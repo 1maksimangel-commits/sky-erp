@@ -1,5 +1,8 @@
 "use server";
 
+import { assertCan } from "@/lib/platform/permissions";
+import { requireCoreCompany } from "@/lib/core/ownership";
+import { productInputSchema, validationError, uuid } from "@/lib/core/validation";
 import { revalidatePath } from "next/cache";
 import { formatProductActionError } from "@/lib/products/errors";
 import type { ProductFormInput } from "@/lib/products/types";
@@ -27,6 +30,8 @@ function productInputToRow(input: ProductFormInput) {
   const name = input.name.trim();
 
   return {
+    unit: nullIfEmpty(input.unit),
+    size_grade: nullIfEmpty(input.size_grade),
     image_url: nullIfEmpty(input.image_url),
     sku,
     code: nullIfEmpty(input.code),
@@ -45,7 +50,7 @@ function productInputToRow(input: ProductFormInput) {
     hs_code: nullIfEmpty(input.hs_code),
     purchase_price: input.purchase_price,
     sale_price: input.sale_price,
-    currency: nullIfEmpty(input.currency) ?? "USD",
+    currency: nullIfEmpty(input.currency)?.toUpperCase() ?? "USD",
     description: nullIfEmpty(input.description),
     is_active: input.is_active,
   };
@@ -67,10 +72,7 @@ export async function checkExistingSkus(
   try {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
-      .from("products")
-      .select("sku")
-      .in("sku", uniqueSkus);
+    const { data, error } = await supabase.rpc("find_core_product_skus", { p_skus: uniqueSkus });
 
     if (error) {
       return {
@@ -81,7 +83,7 @@ export async function checkExistingSkus(
 
     return {
       success: true,
-      existingSkus: (data ?? []).map((row) => row.sku as string),
+      existingSkus: (data ?? []).filter((value: unknown): value is string => typeof value === "string"),
     };
   } catch (error) {
     return {
@@ -101,27 +103,17 @@ export async function importProducts(
   try {
     const supabase = await createClient();
 
+    const denied = await assertCan("products.write");
+    if (denied) return { success: false, error: denied };
+    const companyId = await requireCoreCompany();
     for (const product of products) {
-      const sku = product.sku.trim();
-
-      if (!sku) {
-        continue;
-      }
-
-      const { data: existing } = await supabase
-        .from("products")
-        .select("id")
-        .eq("sku", sku)
-        .maybeSingle();
-
-      if (existing) {
-        return { success: false, error: `SKU must be unique: ${sku}` };
-      }
+      const invalid = validationError(productInputSchema, product);
+      if (invalid) return { success: false, error: invalid };
     }
 
     const { error } = await supabase
       .from("products")
-      .insert(products.map(productInputToRow));
+      .insert(products.map(input => ({ ...productInputToRow(input), company_id: companyId })));
 
     if (error) {
       if (isUniqueViolation(error)) {
@@ -158,6 +150,11 @@ export async function createProduct(
       };
     }
 
+    const denied = await assertCan("products.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(productInputSchema, input);
+    if (invalid) return { success: false, error: invalid };
+    const companyId = await requireCoreCompany();
     const sku = (input.sku ?? "").trim();
     const name = (input.name ?? "").trim();
 
@@ -172,6 +169,7 @@ export async function createProduct(
         .from("products")
         .select("id")
         .eq("sku", sku)
+        .eq("company_id", companyId)
         .maybeSingle();
 
       if (lookupError) {
@@ -188,7 +186,7 @@ export async function createProduct(
 
     const { data, error } = await supabase
       .from("products")
-      .insert(productInputToRow({ ...input, sku, name }))
+      .insert({ ...productInputToRow({ ...input, sku, name }), company_id: companyId })
       .select("id")
       .single();
 
@@ -212,4 +210,28 @@ export async function createProduct(
       error: formatProductActionError(error, "create"),
     };
   }
+}
+
+export async function updateProduct(id: string, input: ProductFormInput): Promise<CreateProductResult> {
+  try {
+    const denied = await assertCan("products.write");
+    if (denied) return { success: false, error: denied };
+    const invalid = validationError(productInputSchema, input);
+    if (invalid || !uuid.safeParse(id).success) return { success: false, error: invalid ?? "Invalid Product ID." };
+    const client = await createClient();
+    const { data, error } = await client.from("products").update(productInputToRow(input)).eq("id", id).select("id").maybeSingle();
+    if (error || !data) return { success: false, error: error?.message ?? "Product not found or access denied." };
+    revalidatePath("/products"); revalidatePath(`/products/${id}`);
+    return { success: true, id };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Unable to update Product." }; }
+}
+export async function setProductActive(id: string, active: boolean): Promise<CreateProductResult> {
+  const denied = await assertCan("products.write");
+  if (denied) return { success: false, error: denied };
+  if (!uuid.safeParse(id).success || typeof active !== "boolean") return { success: false, error: "Invalid Product status request." };
+  const client = await createClient();
+  const { data, error } = await client.from("products").update({ is_active: active }).eq("id", id).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Product not found or access denied." };
+  revalidatePath("/products"); revalidatePath(`/products/${id}`);
+  return { success: true, id };
 }

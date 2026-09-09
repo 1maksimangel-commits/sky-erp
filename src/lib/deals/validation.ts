@@ -9,6 +9,7 @@ import {
   type DealProduct,
   type DealProductInput,
 } from "@/lib/deals/types";
+import { currency, uuid } from "@/lib/core/validation";
 
 export function isDealStatus(value: string): boolean {
   return DEAL_STATUSES.includes(value as (typeof DEAL_STATUSES)[number]);
@@ -52,14 +53,19 @@ export function validateDealParticipant(input: DealParticipantInput): string | n
 }
 
 export function validateDealProduct(input: DealProductInput): string | null {
+  if (!input || !uuid.safeParse(input.business_case_id).success || (input.product_id && !uuid.safeParse(input.product_id).success)) return "Select valid Deal and Product IDs.";
+  for (const code of [input.purchase_currency, input.sales_currency]) {
+    if (code != null && !currency.safeParse(code).success) return "Use valid three-letter currency codes.";
+  }
+  if (input.gross_weight != null && input.net_weight != null && input.gross_weight < input.net_weight) return "Gross weight cannot be below net weight.";
   if (!input.business_case_id.trim()) return "Deal is required.";
   if (!input.product_id?.trim() && !input.product_description?.trim()) {
     return "Select a product or enter a product description.";
   }
-  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0 || input.quantity > 1_000_000_000) {
     return "Quantity must be greater than zero.";
   }
-  if (!input.unit.trim()) return "Unit is required.";
+  if (typeof input.unit !== "string" || !input.unit.trim()) return "Unit is required.";
   for (const value of [
     input.net_weight,
     input.gross_weight,

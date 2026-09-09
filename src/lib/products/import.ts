@@ -134,7 +134,7 @@ function getStatusColumnIndex(headers: unknown[]): number | null {
 }
 
 type StringProductField = {
-  [K in keyof ProductFormInput]: ProductFormInput[K] extends string | null
+  [K in keyof ProductFormInput]-?: ProductFormInput[K] extends string | null | undefined
     ? K
     : never;
 }[keyof ProductFormInput];

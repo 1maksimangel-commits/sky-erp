@@ -98,6 +98,7 @@ Redirect stubs (not canonical content) also exist at former paths under `knowled
 | `Development/Testing.md` | Testing and quality gates |
 | `Development/DatabaseReconstruction.md` | Canonical schema reconstruction, migration replay, and database regression gate |
 | `Development/AuthRLS.md` | Canonical sessions, membership roles, full RLS inventory, storage isolation and authentication regression gate |
+| `Development/CoreDomain.md` | Canonical core entities, CRUD/archive behavior, Deal product lines and isolated core regression gate |
 | `Development/Performance.md` | Performance guidance |
 | `Roadmap/Current.md` | What exists now |
 | `Roadmap/Future.md` | Planned work |

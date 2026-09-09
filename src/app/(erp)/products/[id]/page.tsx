@@ -16,6 +16,9 @@ export default async function ProductDetailPage({
     getEntityWorkspaceBundle("product", id),
   ]);
 
+  if (error && !error.toLowerCase().includes("not found")) {
+    return <p role="alert" className="rounded-lg border border-border p-5 text-sm">Unable to load this record: {error}</p>;
+  }
   if (error || !product) {
     notFound();
   }

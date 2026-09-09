@@ -5,19 +5,19 @@ import {
   Layers,
   Plus,
   Search,
-  Trash2,
   ToggleLeft,
   Users,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { CounterpartyFormModal } from "@/components/counterparties/CounterpartyFormModal";
-import { deleteCounterparty } from "@/lib/counterparties/actions";
 import { PageActions } from "@/components/layout/ShellContext";
 import { TableShell } from "@/components/ui/TableShell";
 import { Toast } from "@/components/ui/Toast";
 import type { Counterparty, CounterpartyStats } from "@/lib/counterparties";
 import type { Company } from "@/lib/companies";
+import { emptyCounterpartyForm } from "@/lib/counterparties/types";
+import { setCounterpartyActive } from "@/lib/counterparties/actions";
 import { useSearchParamOpen } from "@/lib/ui/open-state";
 
 type CounterpartiesViewProps = {
@@ -113,6 +113,7 @@ export function CounterpartiesView({
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [editing, setEditing] = useState<Counterparty | null>(null);
   const [formOpen, setFormOpen] = useSearchParamOpen();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -183,9 +184,13 @@ export function CounterpartiesView({
       </PageActions>
 
       <CounterpartyFormModal
-        open={formOpen}
+        key={editing?.id ?? "create"}
+        existingId={editing?.id}
+        initialValues={editing ? { ...emptyCounterpartyForm(), ...editing, code: editing.code ?? "" } : undefined}
+        open={formOpen || Boolean(editing)}
         onClose={() => {
           setFormOpen(false);
+          setEditing(null);
           if (searchParams.get("new") === "1") router.replace("/counterparties");
         }}
         onSaved={() => {
@@ -344,24 +349,11 @@ export function CounterpartiesView({
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge isActive={item.is_active} />
+                          <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); setEditing(item); }}>Edit</button>
+                          <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); void setCounterpartyActive(item.id, !item.is_active).then(result => { setToast(result.success ? "Status updated." : result.error); if (result.success) router.refresh(); }); }}>{item.is_active ? "Archive" : "Restore"}</button>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          title="Delete counterparty"
-                          aria-label={`Delete ${item.legal_name}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (!window.confirm(`Delete ${item.legal_name} from Counterparties?`)) return;
-                            void deleteCounterparty(item.id).then((result) => {
-                              setToast(result.success ? "Counterparty deleted." : result.error);
-                              if (result.success) router.refresh();
-                            });
-                          }}
-                          className="inline-flex rounded-md border border-red-500/30 p-1.5 text-red-400 hover:bg-red-500/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <span className="text-xs text-muted-foreground">Archive preserves history</span>
                       </td>
                     </tr>
                   ))}

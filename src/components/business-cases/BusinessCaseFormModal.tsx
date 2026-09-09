@@ -2,6 +2,8 @@
 
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { saveDealCore } from "@/lib/deals/actions";
+import { DEAL_STATUSES } from "@/lib/deals/types";
 import { createBusinessCase } from "@/lib/business-cases/actions";
 import {
   emptyBusinessCaseForm,
@@ -12,6 +14,8 @@ import type { Counterparty } from "@/lib/counterparties";
 import { useResetWhenOpened } from "@/lib/ui/open-state";
 
 type BusinessCaseFormModalProps = {
+  existingId?: string;
+  initialValues?: BusinessCaseFormInput;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -33,6 +37,9 @@ type FormState = {
   currency: string;
   contract_amount: string;
   incoterms: string;
+  notes: string;
+  expected_shipment_date: string;
+  eta: string;
 };
 
 const inputClassName =
@@ -56,6 +63,9 @@ function toFormState(values: BusinessCaseFormInput): FormState {
     contract_amount:
       values.contract_amount != null ? String(values.contract_amount) : "",
     incoterms: values.incoterms ?? "",
+    notes: values.notes ?? "",
+    expected_shipment_date: values.expected_shipment_date ?? "",
+    eta: values.eta ?? "",
   };
 }
 
@@ -78,6 +88,9 @@ function toFormInput(form: FormState): BusinessCaseFormInput {
     contract_amount:
       parsedAmount != null && Number.isFinite(parsedAmount) ? parsedAmount : null,
     incoterms: form.incoterms.trim() || null,
+    notes: form.notes.trim() || null,
+    expected_shipment_date: form.expected_shipment_date || null,
+    eta: form.eta || null,
   };
 }
 
@@ -103,19 +116,21 @@ function Field({
 
 export function BusinessCaseFormModal({
   open,
+  existingId,
+  initialValues,
   onClose,
   onSaved,
   companies,
   counterparties,
 }: BusinessCaseFormModalProps) {
   const [form, setForm] = useState<FormState>(() =>
-    toFormState(emptyBusinessCaseForm())
+    toFormState(initialValues ?? emptyBusinessCaseForm())
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useResetWhenOpened(open, () => {
-    setForm(toFormState(emptyBusinessCaseForm()));
+    setForm(toFormState(initialValues ?? emptyBusinessCaseForm()));
     setError(null);
   });
 
@@ -144,7 +159,9 @@ export function BusinessCaseFormModal({
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({ ...current, [key]: value,
+      ...(key === "company_id" ? { buyer_id: "", supplier_id: "", consignee_id: "" } : {}),
+    }));
     setError(null);
   }
 
@@ -159,7 +176,7 @@ export function BusinessCaseFormModal({
     setSaving(true);
     setError(null);
 
-    const result = await createBusinessCase(toFormInput(form));
+    const result = await (existingId ? saveDealCore(existingId, toFormInput(form)) : createBusinessCase(toFormInput(form)));
 
     setSaving(false);
 
@@ -193,7 +210,7 @@ export function BusinessCaseFormModal({
               id="business-case-form-title"
               className="text-base font-semibold text-foreground"
             >
-              New Deal
+              {existingId ? "Edit Deal" : "New Deal"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Create a core trading entity for this deal
@@ -250,6 +267,7 @@ export function BusinessCaseFormModal({
               <Field label="Company">
                 <select
                   required
+                  disabled={Boolean(existingId)}
                   value={form.company_id}
                   onChange={(e) => updateField("company_id", e.target.value)}
                   className={inputClassName}
@@ -268,15 +286,7 @@ export function BusinessCaseFormModal({
                   onChange={(e) => updateField("status", e.target.value)}
                   className={inputClassName}
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="Active">Active</option>
-                  <option value="Documentation">Documentation</option>
-                  <option value="In Transit">In Transit</option>
-                  <option value="Payment">Payment</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Cancelled">Cancelled</option>
-                  <option value="Closed">Closed (legacy)</option>
-                  <option value="Cancelled">Cancelled</option>
+                  {DEAL_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
                 </select>
               </Field>
               <Field label="Buyer">
@@ -286,7 +296,7 @@ export function BusinessCaseFormModal({
                   className={inputClassName}
                 >
                   <option value="">Select buyer</option>
-                  {counterparties.map((counterparty) => (
+                  {counterparties.filter(party => party.company_id === form.company_id && party.is_active).map((counterparty) => (
                     <option key={counterparty.id} value={counterparty.id}>
                       {counterparty.legal_name}
                     </option>
@@ -300,7 +310,7 @@ export function BusinessCaseFormModal({
                   className={inputClassName}
                 >
                   <option value="">Select supplier</option>
-                  {counterparties.map((counterparty) => (
+                  {counterparties.filter(party => party.company_id === form.company_id && party.is_active).map((counterparty) => (
                     <option key={counterparty.id} value={counterparty.id}>
                       {counterparty.legal_name}
                     </option>
@@ -314,7 +324,7 @@ export function BusinessCaseFormModal({
                   className={inputClassName}
                 >
                   <option value="">Select consignee</option>
-                  {counterparties.map((counterparty) => (
+                  {counterparties.filter(party => party.company_id === form.company_id && party.is_active).map((counterparty) => (
                     <option key={counterparty.id} value={counterparty.id}>
                       {counterparty.legal_name}
                     </option>
@@ -364,6 +374,9 @@ export function BusinessCaseFormModal({
                   <option value="JPY">JPY</option>
                 </select>
               </Field>
+              <Field label="Expected shipment date"><input type="date" className={inputClassName} value={form.expected_shipment_date} onChange={event => updateField("expected_shipment_date", event.target.value)} /></Field>
+              <Field label="ETA"><input type="date" className={inputClassName} value={form.eta} onChange={event => updateField("eta", event.target.value)} /></Field>
+              <Field label="Commercial notes"><textarea className={inputClassName} value={form.notes} onChange={event => updateField("notes", event.target.value)} /></Field>
               <Field label="Incoterms">
                 <input
                   type="text"

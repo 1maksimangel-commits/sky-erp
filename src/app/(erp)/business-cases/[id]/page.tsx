@@ -19,6 +19,9 @@ export default async function BusinessCaseDetailPage({
       getProducts(),
     ]);
 
+  if (dealResult.error && !dealResult.error.toLowerCase().includes("not found")) {
+    return <p role="alert" className="rounded-lg border border-border p-5 text-sm">Unable to load this record: {dealResult.error}</p>;
+  }
   if (dealResult.error || !dealResult.data) {
     notFound();
   }

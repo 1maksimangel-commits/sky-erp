@@ -20,7 +20,8 @@ export function getSupabasePublicEnv():
   }
 
   const normalizedUrl = url.replace(/\/$/, "");
-  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1):54321$/i.test(normalizedUrl);
+  // The second port belongs exclusively to the isolated canonical replay gate.
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1):(54321|55321)$/i.test(normalizedUrl);
   const isDevelopment = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(normalizedUrl)) {
     if (!/^https?:\/\//i.test(url) || url.includes(" ") || (isLocalhost && !isDevelopment) || (!isLocalhost && /localhost|127\.0\.0\.1/i.test(url)) || (!isDevelopment && !/^https:\/\//i.test(url))) {

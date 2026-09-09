@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createProduct } from "@/lib/products/actions";
+import { createProduct, updateProduct } from "@/lib/products/actions";
 import {
   applyProductPresetSuggestions,
   matchProductPreset,
@@ -16,6 +16,8 @@ import {
 } from "@/lib/products/types";
 
 type ProductFormModalProps = {
+  existingId?: string;
+  initialValues?: ProductFormInput;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -32,6 +34,8 @@ type FormState = {
   origin: string;
   brand: string;
   size: string;
+  size_grade: string;
+  unit: string;
   glaze: string;
   package_type: string;
   net_weight: string;
@@ -61,6 +65,8 @@ function toFormState(values: ProductFormInput): FormState {
     origin: values.origin ?? "",
     brand: values.brand ?? "",
     size: values.size ?? "",
+    size_grade: values.size_grade ?? "",
+    unit: values.unit ?? "kg",
     glaze: values.glaze != null ? String(values.glaze) : "",
     package_type: values.package_type ?? "",
     net_weight: values.net_weight != null ? String(values.net_weight) : "",
@@ -98,6 +104,8 @@ function toProductInput(form: FormState): ProductFormInput {
     origin: form.origin.trim() || null,
     brand: form.brand.trim() || null,
     size: form.size.trim() || null,
+    size_grade: form.size_grade.trim() || null,
+    unit: form.unit.trim() || null,
     glaze: parseOptionalNumber(form.glaze),
     package_type: form.package_type.trim() || null,
     net_weight: parseOptionalNumber(form.net_weight),
@@ -170,11 +178,13 @@ function OptionalSelect({
 
 export function ProductFormModal({
   open,
+  existingId,
+  initialValues,
   onClose,
   onSaved,
 }: ProductFormModalProps) {
   const [form, setForm] = useState<FormState>(() =>
-    toFormState(emptyProductForm())
+    toFormState(initialValues ?? emptyProductForm())
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +194,7 @@ export function ProductFormModal({
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setForm(toFormState(emptyProductForm()));
+      setForm(toFormState(initialValues ?? emptyProductForm()));
       setError(null);
       setSaving(false);
     }
@@ -247,7 +257,7 @@ export function ProductFormModal({
     setError(null);
 
     try {
-      const result = await createProduct(toProductInput(form));
+      const result = await (existingId ? updateProduct(existingId, { ...initialValues, ...toProductInput(form), image_url: initialValues?.image_url ?? null }) : createProduct(toProductInput(form)));
 
       if (!result.success) {
         setError(result.error);
@@ -289,7 +299,7 @@ export function ProductFormModal({
               id="product-form-title"
               className="text-base font-semibold text-foreground"
             >
-              New Product
+              {existingId ? "Edit Product" : "New Product"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Add a product to the catalog
@@ -397,6 +407,8 @@ export function ProductFormModal({
                   className={inputClassName}
                 />
               </Field>
+              <Field label="Unit"><input className={inputClassName} value={form.unit} onChange={event => updateField("unit", event.target.value)} /></Field>
+              <Field label="Size / Grade"><input className={inputClassName} value={form.size_grade} onChange={event => updateField("size_grade", event.target.value)} /></Field>
               <Field label="Size">
                 <input
                   type="text"

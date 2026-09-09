@@ -54,4 +54,6 @@ export const COUNTERPARTY_TYPES = [
   "Buyer",
   "Supplier",
   "Agent",
+  "Consignee",
+  "Other",
 ] as const;

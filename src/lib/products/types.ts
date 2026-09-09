@@ -1,4 +1,6 @@
 export type ProductFormInput = {
+  unit?: string | null;
+  size_grade?: string | null;
   image_url: string | null;
   sku: string;
   code: string | null;
@@ -24,6 +26,8 @@ export type ProductFormInput = {
 
 export const emptyProductForm = (): ProductFormInput => ({
   image_url: null,
+  unit: "kg",
+  size_grade: null,
   sku: "",
   code: null,
   name: "",

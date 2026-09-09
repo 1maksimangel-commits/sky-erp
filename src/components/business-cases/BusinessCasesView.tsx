@@ -18,6 +18,8 @@ import { Toast } from "@/components/ui/Toast";
 import type { BusinessCase, BusinessCaseStats } from "@/lib/business-cases";
 import type { Company } from "@/lib/companies";
 import type { Counterparty } from "@/lib/counterparties";
+import { emptyBusinessCaseForm } from "@/lib/business-cases/types";
+import { setDealArchived } from "@/lib/deals/actions";
 import { useSearchParamOpen } from "@/lib/ui/open-state";
 
 type BusinessCasesViewProps = {
@@ -150,6 +152,7 @@ export function BusinessCasesView({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [editing, setEditing] = useState<BusinessCase | null>(null);
   const [formOpen, setFormOpen] = useSearchParamOpen();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -212,9 +215,13 @@ export function BusinessCasesView({
       </PageActions>
 
       <BusinessCaseFormModal
-        open={formOpen}
+        key={editing?.id ?? "create"}
+        existingId={editing?.id}
+        initialValues={editing ? { ...emptyBusinessCaseForm(), ...editing, status: editing.status ?? "Draft", currency: editing.currency ?? "USD" } : undefined}
+        open={formOpen || Boolean(editing)}
         onClose={() => {
           setFormOpen(false);
+          setEditing(null);
           if (searchParams.get("new") === "1") {
             router.replace("/business-cases");
           }
@@ -348,7 +355,9 @@ export function BusinessCasesView({
                           {item.supplier?.legal_name ?? "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={item.status} />
+                          <StatusBadge status={item.archived_at ? "Archived" : item.status} />
+                          <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); setEditing(item); }}>Edit</button>
+                          <button type="button" className="ml-3 text-xs underline" onClick={event => { event.stopPropagation(); void setDealArchived(item.id, !item.archived_at).then(result => { setToast(result.success ? "Status updated." : result.error); if (result.success) router.refresh(); }); }}>{item.archived_at ? "Restore" : "Archive"}</button>
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                           {item.contract_number ?? "—"}

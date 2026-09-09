@@ -1,7 +1,11 @@
+import { getActiveCompanyId } from "@/lib/platform/company-scope";
 import { createClient } from "@/lib/supabase/server";
 
 export type Counterparty = {
   id: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  company_id?: string | null;
   source_company_id: string | null;
   code: string | null;
   legal_name: string;
@@ -39,13 +43,8 @@ export type CounterpartiesResult =
   | { data: null; stats: null; error: string };
 
 const counterpartyColumns =
-  "id, source_company_id, code, legal_name, short_name, counterparty_type, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, bank_account_name, bank_name, bank_address, account_number, iban, swift, bank_currency, is_active" as const;
-const legacyCounterpartyColumns =
-  "id, code, legal_name, short_name, counterparty_type, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, bank_account_name, bank_name, bank_address, account_number, iban, swift, bank_currency, is_active" as const;
+  "id, company_id, created_at, updated_at, source_company_id, code, legal_name, short_name, counterparty_type, country, city, address, tax_id, registration_number, email, phone, website, authorized_signer_name, authorized_signer_title, bank_account_name, bank_name, bank_address, account_number, iban, swift, bank_currency, is_active" as const;
 
-function missingSourceCompanyColumn(error: { message: string }) {
-  return /source_company_id|schema cache|PGRST204|42703/i.test(error.message);
-}
 
 function computeStats(counterparties: Counterparty[]): CounterpartyStats {
   const types = new Set(
@@ -65,16 +64,14 @@ function computeStats(counterparties: Counterparty[]): CounterpartyStats {
 export async function getCounterparties(): Promise<CounterpartiesResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("counterparties")
     .select(counterpartyColumns)
     .order("legal_name");
+  const companyId = await getActiveCompanyId();
+  if (companyId) query = query.eq("company_id", companyId);
+  const { data, error } = await query;
 
-  if (error && missingSourceCompanyColumn(error)) {
-    const fallback = await supabase.from("counterparties").select(legacyCounterpartyColumns).order("legal_name");
-    if (fallback.error) return { data: null, stats: null, error: fallback.error.message };
-    return { data: (fallback.data ?? []).map((row) => ({ source_company_id: null, ...row })) as Counterparty[], stats: computeStats((fallback.data ?? []).map((row) => ({ source_company_id: null, ...row })) as Counterparty[]), error: null };
-  }
 
   if (error) {
     return {
@@ -108,12 +105,6 @@ export async function getCounterpartyById(
     .eq("id", id)
     .maybeSingle();
 
-  if (error && missingSourceCompanyColumn(error)) {
-    const fallback = await supabase.from("counterparties").select(legacyCounterpartyColumns).eq("id", id).maybeSingle();
-    if (fallback.error) return { data: null, error: fallback.error.message };
-    if (!fallback.data) return { data: null, error: "Counterparty not found." };
-    return { data: { source_company_id: null, ...fallback.data } as Counterparty, error: null };
-  }
 
   if (error) {
     return { data: null, error: error.message };
@@ -129,18 +120,15 @@ export async function getCounterpartyById(
 export async function getActiveCounterparties(): Promise<CounterpartiesResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("counterparties")
     .select(counterpartyColumns)
     .eq("is_active", true)
     .order("legal_name");
+  const companyId = await getActiveCompanyId();
+  if (companyId) query = query.eq("company_id", companyId);
+  const { data, error } = await query;
 
-  if (error && missingSourceCompanyColumn(error)) {
-    const fallback = await supabase.from("counterparties").select(legacyCounterpartyColumns).eq("is_active", true).order("legal_name");
-    if (fallback.error) return { data: null, stats: null, error: fallback.error.message };
-    const rows = (fallback.data ?? []).map((row) => ({ source_company_id: null, ...row })) as Counterparty[];
-    return { data: rows, stats: computeStats(rows), error: null };
-  }
 
   if (error) {
     return {
