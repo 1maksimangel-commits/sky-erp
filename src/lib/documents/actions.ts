@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getDocumentVersions, getEntityDocuments } from "@/lib/documents/db";
@@ -113,7 +114,7 @@ async function recordDocumentEvent(input: {
 export async function uploadDocument(
   input: DocumentUploadInput
 ): Promise<DocumentActionResult> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false, error: denied };
 
   if (!validateDocumentEntityType(input.entityType)) {
@@ -184,6 +185,7 @@ export async function uploadDocument(
       documentId,
       safeName
     );
+    filePath = await companyStoragePath(filePath, { type: entityType, id: input.entityId });
   } catch {
     return { success: false, error: "Invalid entity identifiers for storage path." };
   }
@@ -395,7 +397,7 @@ export async function replaceDocumentVersion(input: {
   title?: string | null;
   notes?: string | null;
 }): Promise<DocumentActionResult> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false, error: denied };
 
   const file = input.formData.get("file");
@@ -434,6 +436,7 @@ export async function replaceDocumentVersion(input: {
       existing.id,
       `${nextVersion}-${safeName}`
     );
+    filePath = await companyStoragePath(filePath, { type: existing.entity_type, id: existing.entity_id });
   } catch {
     return { success: false, error: "Invalid storage path." };
   }
@@ -546,7 +549,7 @@ export async function replaceDocumentVersion(input: {
 export async function deleteDocument(
   id: string
 ): Promise<DocumentActionResult> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false, error: denied };
 
   try {

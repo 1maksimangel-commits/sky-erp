@@ -21,7 +21,7 @@ function encodeNdjson(event: ImportProgressEvent): Uint8Array {
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) {
     return Response.json({ error: denied }, { status: 403 });
   }

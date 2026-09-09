@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 import { buildImportMatches } from "@/lib/ai/contracts/match";
 import { asString } from "@/lib/ai/contracts/schema";
 import type {
@@ -213,7 +214,7 @@ export async function createImportAndStorePdf(file: File): Promise<{
 
   const importId = randomUUID();
   const fileName = sanitizeFileName(file.name);
-  const filePath = `imports/${importId}/${fileName}`;
+  const filePath = await companyStoragePath(`imports/${importId}/${fileName}`);
   const supabase = await createClient();
   const createdBy = await resolveUserId(supabase);
 

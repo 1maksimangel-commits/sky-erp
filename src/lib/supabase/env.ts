@@ -1,3 +1,5 @@
+import { isPublicSupabaseKey } from "./public-key";
+
 export type SupabasePublicEnv = {
   url: string;
   publishableKey: string;
@@ -24,7 +26,7 @@ export function getSupabasePublicEnv():
     if (!/^https?:\/\//i.test(url) || url.includes(" ") || (isLocalhost && !isDevelopment) || (!isLocalhost && /localhost|127\.0\.0\.1/i.test(url)) || (!isDevelopment && !/^https:\/\//i.test(url))) {
       return {
         ok: false,
-        error: `NEXT_PUBLIC_SUPABASE_URL is malformed or points at localhost: ${url}`,
+        error: "NEXT_PUBLIC_SUPABASE_URL is malformed or points at a disallowed local endpoint.",
       };
     }
   }
@@ -36,7 +38,7 @@ export function getSupabasePublicEnv():
     };
   }
 
-  if (/service_role|SECRET/i.test(publishableKey)) {
+  if (!isPublicSupabaseKey(publishableKey)) {
     return {
       ok: false,
       error:

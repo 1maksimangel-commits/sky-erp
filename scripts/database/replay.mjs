@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { verifyHistory, sha256 } from './history.mjs';
 import { collectSourceContract } from './source-contract.mjs';
 import { compareContract } from './compare.mjs';
+import { verifyAuthHttp } from './auth-http.mjs';
 
 // No connection-string, project-ref, workdir, or remote-target arguments accepted.
 // Only this process's newly created, randomly named local Supabase is reachable.
@@ -35,7 +36,7 @@ function run(command, args, input, quiet = false) {
     child.stdin.end(input);
   });
 }
-const sql = query => run('docker', ['exec', '-i', container, 'psql', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres'], query);
+const sql = (query, quiet = false) => run('docker', ['exec', '-i', container, 'psql', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres'], query, quiet);
 let started = false;
 let verifiedResult;
 try {
@@ -69,6 +70,8 @@ try {
   const expectedVersions = migrations.map(m => m.name.slice(0, 14));
   if (JSON.stringify(catalog.migrations) !== JSON.stringify(expectedVersions)) throw new Error('Applied migration ledger does not match the canonical chain');
   fs.writeFileSync(path.join(workdir, 'catalog.json'), JSON.stringify(catalog, null, 2));
+  const rlsInventory = JSON.parse(await sql(fs.readFileSync('supabase/replay/rls-inventory.sql', 'utf8')));
+  fs.writeFileSync(path.join(workdir, 'rls-inventory.json'), JSON.stringify(rlsInventory, null, 2));
   const errors = compareContract(contract, catalog);
   if (errors.length) throw new Error(`Application/schema mismatches:\n${JSON.stringify(errors, null, 2)}`);
   for (const name of ['companies', 'counterparties', 'products', 'contracts', 'payments']) {
@@ -76,11 +79,15 @@ try {
   }
   console.log('Schema contract: zero missing tables, columns, embedded relationships, RPC signatures, or buckets.');
   await sql(fs.readFileSync('supabase/replay/schema-smoke.sql', 'utf8'));
+  await sql(fs.readFileSync('supabase/replay/auth-rls.sql', 'utf8'));
+  console.log('Auth/RLS: table grants, company isolation, authenticated CRUD, RPCs, Admin, readonly, disabled and anon assertions passed.');
+  const localStatus = JSON.parse(await run('supabase', ['status', '--output', 'json', '--workdir', workdir], undefined, true));
+  await verifyAuthHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   verifiedResult = {
     status: 'PASS', cli: version, migrations: migrations.map(m => ({ name: m.name, sha256: sha256(m.sql) })),
     tablesChecked: contract.tables.length, selectsChecked: contract.selects.length,
     columnUsesChecked: contract.columns.length, rpcNamesChecked: [...new Set(contract.rpcs.map(r => r.name))],
-    schemaSmoke: 'PASS', authRlsFunctionalTests: 'NOT RUN — Phase 2',
+    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS',
   };
 } catch (error) {
   console.error(error.message);

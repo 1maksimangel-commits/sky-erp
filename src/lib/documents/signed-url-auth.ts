@@ -39,12 +39,13 @@ export function authorizeStoragePathOwnership(
 /**
  * Filter document rows that may receive signed URLs under the active company.
  */
-export function filterOwnedDocumentsForSigning<
+export async function filterOwnedDocumentsForSigning<
   T extends { company_id?: string | null },
 >(
   documents: T[],
-  activeCompanyId: string | null | undefined = getActiveCompanyId()
-): T[] {
+  activeCompanyId: string | null | undefined = undefined
+): Promise<T[]> {
+  if (activeCompanyId === undefined) activeCompanyId = await getActiveCompanyId();
   return documents.filter(
     (doc) =>
       authorizeStoragePathOwnership(activeCompanyId, doc.company_id) === null
@@ -193,7 +194,7 @@ export async function assertCanSignStoragePath(
   | { ok: true; owner: RegisteredStorageOwner }
   | { ok: false; error: string }
 > {
-  const denied = assertCan("documents.read");
+  const denied = await assertCan("documents.read");
   if (denied) {
     return { ok: false, error: denied };
   }
@@ -203,7 +204,7 @@ export async function assertCanSignStoragePath(
     return resolved;
   }
 
-  const companyDenied = assertCompanyAccess(resolved.owner.companyId);
+  const companyDenied = await assertCompanyAccess(resolved.owner.companyId);
   if (companyDenied) {
     return { ok: false, error: companyDenied };
   }

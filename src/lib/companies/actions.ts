@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { CompanyFormInput } from "@/lib/companies/types";
 import { createClient } from "@/lib/supabase/server";
 import { uploadDocument } from "@/lib/documents/actions";
+import { assertCan } from "@/lib/platform/permissions";
 
 export type CreateCompanyResult =
   | { success: true; id?: string }
@@ -16,6 +17,8 @@ export async function uploadCompanyApprovalMark(input: {
   kind: "seal" | "signature";
   formData: FormData;
 }): Promise<CreateCompanyResult> {
+  const denied = await assertCan("companies.write");
+  if (denied) return { success: false, error: denied };
   const file = input.formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { success: false, error: "Image file is required." };
   if (!new Set(["image/png", "image/jpeg"]).has(file.type)) return { success: false, error: "Use a PNG or JPEG image." };
@@ -59,7 +62,7 @@ function formatSupabaseError(error: { code?: string; message: string }): string 
   }
 
   if (error.code === "42501") {
-    return "Permission denied. Unable to create company. Apply an INSERT policy on public.companies.";
+    return "Permission denied. Company administration requires an active Admin account.";
   }
 
   return error.message || "Unable to save company. Please try again.";
@@ -114,6 +117,8 @@ function bankInputToRow(companyId: string, input: CompanyFormInput) {
 export async function createCompany(
   input: CompanyFormInput
 ): Promise<CreateCompanyResult> {
+  const denied = await assertCan("companies.write");
+  if (denied) return { success: false, error: denied };
   // Never throw: Next.js 16 can surface "TypeError: args.map is not a function"
   // when server actions rethrow.
   try {
@@ -188,6 +193,8 @@ export async function updateCompany(
   id: string,
   input: CompanyFormInput
 ): Promise<UpdateCompanyResult> {
+  const denied = await assertCan("companies.write");
+  if (denied) return { success: false, error: denied };
   try {
     if (!id?.trim() || !input || typeof input !== "object") {
       return { success: false, error: "Invalid company payload. Please reload and try again." };
@@ -221,7 +228,7 @@ export async function updateCompany(
       .eq("id", id);
     if (error) {
       if (error.code === "42501") {
-        return { success: false, error: "Permission denied. Company update policy is not configured." };
+        return { success: false, error: "Permission denied. Company administration requires an active Admin account." };
       }
       return { success: false, error: formatSupabaseError(error) };
     }

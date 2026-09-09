@@ -25,7 +25,7 @@ async function optionalImage(formData: FormData, name: string) {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) return Response.json({ error: denied }, { status: 403 });
 
   try {

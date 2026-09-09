@@ -27,11 +27,13 @@ jobs:
         with:
           version: 2.115.0
       - run: pnpm db:test
+      - run: pnpm auth:test
       - run: pnpm db:check
       - run: pnpm db:replay
       - run: pnpm exec tsc --noEmit
       - run: pnpm lint
       - run: pnpm build
+      - run: pnpm auth:bundle
       - run: git diff --check
       # Metadata and pass/fail evidence only. Never upload CLI output, .temp,
       # Supabase credentials, storage content, env files, or database dumps.
@@ -41,6 +43,7 @@ jobs:
           name: database-replay-evidence
           path: |
             .db-replay/*/catalog.json
+            .db-replay/*/rls-inventory.json
             .db-replay/*/result.json
           include-hidden-files: true
           if-no-files-found: ignore

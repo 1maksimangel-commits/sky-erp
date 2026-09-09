@@ -300,7 +300,7 @@ export async function getCrmAttachments(customerId: string): Promise<{
   error: string | null;
 }> {
   try {
-    const readDenied = assertCan("documents.read");
+    const readDenied = await assertCan("documents.read");
     if (readDenied) {
       return { data: [], error: readDenied };
     }
@@ -324,7 +324,7 @@ export async function getCrmAttachments(customerId: string): Promise<{
       return { data: [], error: "Customer was not found." };
     }
 
-    const companyDenied = assertCompanyAccess(
+    const companyDenied = await assertCompanyAccess(
       (customer.company_id as string | null) ?? null
     );
     if (companyDenied) {

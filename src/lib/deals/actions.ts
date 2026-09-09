@@ -33,7 +33,7 @@ function schemaMessage(message: string): string {
 }
 
 async function authorizeDealWrite(id: string) {
-  const denied = assertCan("business_cases.write");
+  const denied = await assertCan("business_cases.write");
   if (denied) return { error: denied, companyId: null };
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -43,7 +43,7 @@ async function authorizeDealWrite(id: string) {
     .maybeSingle();
   if (error) return { error: error.message, companyId: null };
   if (!data) return { error: "Deal not found.", companyId: null };
-  const companyError = assertCompanyAccess(data.company_id);
+  const companyError = await assertCompanyAccess(data.company_id);
   return { error: companyError, companyId: data.company_id };
 }
 

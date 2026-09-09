@@ -15,8 +15,11 @@ Quality gates and testing expectations.
 | Schema checker unit tests | `pnpm db:test` | Negative tests for missing objects, FK/RPC drift, mandatory columns |
 | Database source inventory | `pnpm db:check` | Offline only; not a reconstruction PASS |
 | Clean Supabase replay | `pnpm db:replay` | Real isolated stack, canonical history, catalog comparison, rollback-only SQL fixtures |
+| Auth source security | `pnpm auth:test` | Public-key validation, browser dependency boundaries, factory/bypass checks |
+| Auth/RLS functional | `pnpm db:replay` | Every private table, company A/B, role matrix, Admin, anon, RPCs; local Auth/PostgREST/Storage HTTP tests |
+| Built browser security | `pnpm auth:bundle` | Requires production build; rejects privileged keys in browser chunks |
 
-See [DatabaseReconstruction.md](./DatabaseReconstruction.md). The database replay
+See [DatabaseReconstruction.md](./DatabaseReconstruction.md) and [AuthRLS.md](./AuthRLS.md). The database replay
 workflow runs these gates plus TypeScript, lint, build, and diff checks in CI.
 
 ## Confirmed rules

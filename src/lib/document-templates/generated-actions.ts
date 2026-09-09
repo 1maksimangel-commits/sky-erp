@@ -9,7 +9,7 @@ import { DEFAULT_PAGE_SETTINGS, type PageSettings } from "./engine";
 type Result = { success: true; id: string } | { success: false; error: string };
 
 export async function saveGeneratedDocument(input: { contractId?: string | null; businessCaseId?: string | null; documentType: string; title: string; template: string; templateVersion: number; canonical: CanonicalDocumentData; overrides?: Record<string, unknown>; pageSettings?: PageSettings; status?: "Draft" | "Final" | "Issued"; version?: number; supersedesId?: string | null }): Promise<Result> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false, error: denied };
   const client = await createClient();
   const user = await client.auth.getUser();

@@ -60,7 +60,9 @@ Timeline · activity · documents panels · search · notifications · permissio
 
 ## Known risks / gaps
 
-See `Memory/KNOWN_ISSUES.md`: stub admin role, open RLS, incomplete CRUD, stub `/reports` and rule-based `/ai`, migration drift.
+See `Memory/KNOWN_ISSUES.md` for business-module gaps. Phase 2 replaces the Admin
+stub and public policies with verified sessions and company membership RLS;
+[AuthRLS.md](./Development/AuthRLS.md) documents the model and adoption boundary.
 
 ## Development rules
 
@@ -70,6 +72,5 @@ See `Memory/KNOWN_ISSUES.md`: stub admin role, open RLS, incomplete CRUD, stub `
 
 ## Planned
 
-- Auth middleware + real roles.  
-- Company-scoped data access.  
+- Adoption of the verified auth/company model in an existing environment requires separate approval.
 - Unified reporting layer.

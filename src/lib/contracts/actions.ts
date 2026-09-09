@@ -115,7 +115,7 @@ export async function createContract(
   input: ContractFormInput,
   options: CreateContractOptions = {}
 ): Promise<ContractActionResult> {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -181,7 +181,7 @@ export async function updateContract(
   id: string,
   input: ContractFormInput
 ): Promise<ContractActionResult> {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -230,7 +230,7 @@ export async function updateContract(
 }
 
 export async function deleteContract(id: string): Promise<ContractActionResult> {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) {
     return { success: false, error: denied };
   }

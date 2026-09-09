@@ -40,7 +40,7 @@ function formInputToRow(input: BusinessCaseFormInput) {
 export async function createBusinessCase(
   input: BusinessCaseFormInput
 ): Promise<CreateBusinessCaseResult> {
-  const denied = assertCan("business_cases.write");
+  const denied = await assertCan("business_cases.write");
   if (denied) {
     return { success: false, error: denied };
   }

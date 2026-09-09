@@ -92,7 +92,7 @@ export async function createCounterpartyFromImport(input: {
   phone?: string | null;
   type?: string | null;
 }): Promise<ImportActionResult<{ id: string }>> {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) return { success: false, error: denied };
 
   const payload: CounterpartyFormInput = {
@@ -145,7 +145,7 @@ export async function createProductFromImport(input: {
   salePrice?: number | null;
   description?: string | null;
 }): Promise<ImportActionResult<{ id: string }>> {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) return { success: false, error: denied };
 
   const sku =
@@ -194,7 +194,7 @@ export async function confirmContractImport(
 ): Promise<
   ImportActionResult<{ contractId: string; message: string; href?: string }>
 > {
-  const denied = assertCan("contracts.write");
+  const denied = await assertCan("contracts.write");
   if (denied) return { success: false, error: denied };
 
   const supabase = await createClient();

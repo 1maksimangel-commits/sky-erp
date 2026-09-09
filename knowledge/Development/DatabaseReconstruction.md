@@ -10,8 +10,9 @@ No production dump, pre-existing application database, env file, seed, or ignore
 bootstrap directory is an input to reconstruction.
 
 The gate uses the real Supabase platform, not substitute `auth`/`storage` tables.
-Its schema owner connection is strictly for migration verification. Passing it
-does not establish that anonymous or authenticated application access works.
+Its schema owner connection is strictly for migration verification and fictional
+fixture provisioning. Phase 2 adds authenticated/anon role and HTTP tests in the
+same gate; see [AuthRLS.md](./AuthRLS.md).
 
 ## Recovered prerequisites and dependency order
 
@@ -89,6 +90,8 @@ child commands, disables CLI telemetry, and verifies an empty `public` schema be
 copying the canonical migrations. It uses `migration up --local`, checks the complete
 applied ledger, compares the real catalog to source expectations, then runs
 rollback-only SQL tests with fictional data. It never resets a database.
+Phase 2 also tests local Auth, PostgREST and Storage with fictional HTTP fixtures,
+retained only in this run's stopped stack. Credentials are withheld from output.
 
 The tool stops only its own test stack in `finally`, including after failures.
 Diagnostic files and the CLI's local volume backup are retained; no files or existing
@@ -135,8 +138,10 @@ compare it to a verified reconstruction, and prepare a reviewed forward adoption
 plan with data/constraint checks. `CREATE TABLE IF NOT EXISTS` does not reconcile an
 existing incomplete table. None of Phase 1 applies migrations remotely.
 
-Auth/RLS functionality is Phase 2. Purchase/Sale profitability and new document
-features are out of scope. Historical permission policies replay unchanged.
+Phase 2 appends a forward authenticated-company migration after this preserved
+chain and extends the same gate. Historical SQL files still replay unchanged;
+their permissive policies are superseded by that forward migration. Purchase/Sale
+profitability and new document features remain out of scope.
 
 ## Phase 1 verification record — 2026-09-08
 

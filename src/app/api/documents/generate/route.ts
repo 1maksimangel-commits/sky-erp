@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 import { assertCan } from "@/lib/platform/permissions";
 import { renderUploadedDocx, renderTextTemplateDocx } from "@/lib/contracts/docx";
 
@@ -18,7 +19,7 @@ function flatten(data: Record<string, unknown>) {
 }
 
 export async function POST(request: Request) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return Response.json({ error: denied }, { status: 403 });
   try {
     const input = (await request.json()) as RequestInput;
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     values.products = products.map((item) => typeof item === "object" && item ? `${(item as Record<string, unknown>).name ?? ""} ${(item as Record<string, unknown>).quantity ?? ""}` : String(item)).join("; ");
     const bytes = row.template_content ? renderTextTemplateDocx(row.template_content, values) : renderUploadedDocx(new Uint8Array(await (await client.storage.from("documents").download(row.storage_path)).data!.arrayBuffer()), { ...values, products: products as Array<Record<string, unknown>> });
     const fileName = `${input.documentType}-${Date.now()}.docx`;
-    const path = `generated/${input.documentType}/${fileName}`;
+    const path = await companyStoragePath(`generated/${input.documentType}/${fileName}`);
     const upload = await client.storage.from("documents").upload(path, bytes, { contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", upsert: false });
     if (upload.error) return Response.json({ error: upload.error.message }, { status: 500 });
     return new Response(Buffer.from(bytes), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Content-Disposition": `attachment; filename="${fileName}"`, "X-SKY-Storage-Path": path, "X-SKY-Template-Version": String(row.version) } });

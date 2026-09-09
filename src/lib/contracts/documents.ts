@@ -63,11 +63,11 @@ export async function getDocumentDownloadUrls(
     return {};
   }
 
-  if (assertCan("documents.read")) {
+  if (await assertCan("documents.read")) {
     return {};
   }
 
-  const owned = filterOwnedDocumentsForSigning(documents);
+  const owned = await filterOwnedDocumentsForSigning(documents);
   if (!owned.length) {
     return {};
   }

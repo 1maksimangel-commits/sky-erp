@@ -22,6 +22,11 @@ prerequisites, safety boundaries, and verification details. Ignored `.codex-loca
 bootstrap files are retired as schema sources. Existing or remote databases are
 not reset or changed by this workflow.
 
+Authentication now requires a Supabase session, active user profile and company
+membership (or global Admin). See [Authentication and RLS](./knowledge/Development/AuthRLS.md)
+for provisioning boundaries, the complete access inventory and regression commands.
+There is no anonymous ERP development mode.
+
 ## Contract PDF Import (AI)
 
 Uses the OpenAI **Responses API** (`POST /v1/responses`) with PDF `input_file` uploads via the Files API (`purpose: user_data`).

@@ -6,7 +6,7 @@ import { createImmutableSnapshot } from "@/lib/document-templates/engine";
 type Input = { documentType: string; templateId: string; dealId?: string | null; documentNumber?: string | null; rendered: string; canonical: unknown; overrides?: unknown; calculated?: unknown; docxStoragePath?: string | null };
 
 export async function createGenerationBatch(dealId?: string | null) {
-  const denied = assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
+  const denied = await assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
   const client = await createClient(); const batchNumber = `GEN-${new Date().toISOString().slice(0,10).replaceAll("-", "")}-${Math.floor(Math.random()*900+100)}`;
   const { data, error } = await client.from("document_generation_batches" as never).insert({ batch_number: batchNumber, deal_id: dealId ?? null }).select("id,batch_number").single();
   if (error || !data) return { success: false as const, error: error?.message ?? "Unable to create generation batch." };
@@ -14,7 +14,7 @@ export async function createGenerationBatch(dealId?: string | null) {
 }
 
 export async function saveGenerationDraft(batchId: string, input: Input) {
-  const denied = assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
+  const denied = await assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
   const client = await createClient(); const snapshot = createImmutableSnapshot({ templateId: input.templateId, dealId: input.dealId ?? null, canonical: input.canonical, overrides: input.overrides ?? {}, calculated: input.calculated ?? {}, rendered: input.rendered }, "Draft", 1);
   const { data, error } = await client.from("generated_documents" as never).insert({ batch_id: batchId, document_type: input.documentType, source_template_id: input.templateId, deal_id: input.dealId ?? null, document_number: input.documentNumber ?? null, title: input.documentNumber ?? input.documentType, status: "Draft", version: 1, snapshot_data: snapshot.snapshot, snapshot_hash: snapshot.hash, docx_storage_path: input.docxStoragePath ?? null }).select("id").single();
   if (error || !data) return { success: false as const, error: error?.message ?? "Unable to save draft." };
@@ -22,7 +22,7 @@ export async function saveGenerationDraft(batchId: string, input: Input) {
 }
 
 export async function finalizeGeneratedDocument(id: string) {
-  const denied = assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
+  const denied = await assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
   const client = await createClient(); const { data: current, error: loadError } = await client.from("generated_documents" as never).select("status").eq("id", id).maybeSingle();
   if (loadError || !current) return { success: false as const, error: loadError?.message ?? "Document not found." };
   if ((current as { status: string }).status !== "Draft") return { success: false as const, error: "Only Draft documents can be finalized." };
@@ -31,7 +31,7 @@ export async function finalizeGeneratedDocument(id: string) {
 }
 
 export async function createGeneratedDocumentVersion(id: string) {
-  const denied = assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
+  const denied = await assertCan("documents.write"); if (denied) return { success: false as const, error: denied };
   const client = await createClient(); const { data: previous, error } = await client.from("generated_documents" as never).select("*").eq("id", id).maybeSingle();
   if (error || !previous) return { success: false as const, error: error?.message ?? "Document not found." };
   const row = previous as Record<string, unknown>; if (row.status !== "Final") return { success: false as const, error: "Only Final documents can create a new version." };

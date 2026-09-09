@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertCan } from "@/lib/platform/permissions";
@@ -31,7 +32,7 @@ export async function listDocumentTemplates(companyId?: string | null) {
 }
 
 export async function uploadDocumentTemplate(formData: FormData) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   const documentType = String(formData.get("documentType") ?? "");
   const name = String(formData.get("name") ?? "");
@@ -46,7 +47,7 @@ export async function uploadDocumentTemplate(formData: FormData) {
   if (file.size > MAX_TEMPLATE_BYTES) return { success: false as const, error: "Template is too large (maximum 25 MB)." };
   const client = await createClient();
   const companyPart = companyId ?? "global";
-  const path = `templates/${companyPart}/${documentType}/${randomUUID()}.docx`;
+  const path = await companyStoragePath(`templates/${companyPart}/${documentType}/${randomUUID()}.docx`, undefined, companyId);
   const bytes = await file.arrayBuffer();
   const contentType = file.name.toLowerCase().endsWith(".dotx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.template" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   const { error: storageError } = await client.storage.from("documents").upload(path, bytes, { contentType, upsert: false });
@@ -72,7 +73,7 @@ export async function createTextDocumentTemplate(input: {
   content: string;
   isDefault: boolean;
 }) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   if (!input.name.trim() || !input.content.trim()) return { success: false as const, error: "Template name and content are required." };
   const client = await createClient();
@@ -85,7 +86,7 @@ export async function createTextDocumentTemplate(input: {
 }
 
 export async function deleteDocumentTemplate(id: string) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   const client = await createClient();
   const found = await table(client).select("storage_path").eq("id", id).maybeSingle();
@@ -98,7 +99,7 @@ export async function deleteDocumentTemplate(id: string) {
 }
 
 export async function setDefaultDocumentTemplate(id: string) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   const client = await createClient();
   const { error } = await table(client).update({ is_default: true }).eq("id", id);
@@ -108,7 +109,7 @@ export async function setDefaultDocumentTemplate(id: string) {
 }
 
 export async function setDocumentTemplateActive(id: string, isActive: boolean) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   const client = await createClient();
   const { error } = await table(client).update({ is_active: isActive }).eq("id", id);
@@ -143,7 +144,7 @@ export async function discoverTemplatePlaceholders(id: string) {
 }
 
 export async function configureDocumentTemplate(input: { templateId: string; mappings: Array<{ placeholder: string; skyVariable: string | null; isRepeatingProductRow?: boolean }> }) {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) return { success: false as const, error: denied };
   const client = await createClient();
   const rows = input.mappings.map((mapping) => ({ template_id: input.templateId, placeholder: mapping.placeholder, sky_variable: mapping.skyVariable || null, is_repeating_product_row: Boolean(mapping.isRepeatingProductRow) }));

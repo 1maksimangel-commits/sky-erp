@@ -99,7 +99,7 @@ async function resolveShipmentOwnership(
 ): Promise<
   { ok: true; input: ShipmentFormInput } | { ok: false; error: string }
 > {
-  const companyBind = bindLogisticsWriteCompany(input.company_id);
+  const companyBind = await bindLogisticsWriteCompany(input.company_id);
   if (!companyBind.ok) {
     return { ok: false, error: companyBind.error };
   }
@@ -129,7 +129,7 @@ async function resolveShipmentOwnership(
     };
   }
 
-  const scopeDenied = assertLogisticsWrite(companyId);
+  const scopeDenied = await assertLogisticsWrite(companyId);
   if (scopeDenied) {
     return { ok: false, error: scopeDenied };
   }
@@ -387,7 +387,7 @@ export async function updateShipment(
     return { success: false, error: "Shipment not found." };
   }
 
-  const existingDenied = assertLogisticsWrite(existing.company_id);
+  const existingDenied = await assertLogisticsWrite(existing.company_id);
   if (existingDenied) {
     return { success: false, error: existingDenied };
   }
@@ -512,7 +512,7 @@ export async function deleteShipment(id: string): Promise<ShipmentActionResult> 
     return { success: false, error: "Shipment not found." };
   }
 
-  const denied = assertLogisticsWrite(existing.company_id);
+  const denied = await assertLogisticsWrite(existing.company_id);
   if (denied) {
     return { success: false, error: denied };
   }
@@ -550,7 +550,7 @@ export async function addShipmentTimelineEvent(
     return { success: false, error: "Shipment not found." };
   }
 
-  const denied = assertLogisticsWrite(shipment.company_id);
+  const denied = await assertLogisticsWrite(shipment.company_id);
   if (denied) {
     return { success: false, error: denied };
   }

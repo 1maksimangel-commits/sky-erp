@@ -1,4 +1,5 @@
 "use server";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -266,7 +267,7 @@ export async function uploadContractDocument(
   }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const storagePath = `${contractId}/${Date.now()}-${safeName}`;
+  const storagePath = await companyStoragePath(`${contractId}/${Date.now()}-${safeName}`, { type: "contract", id: contractId });
   const supabase = await createClient();
 
   const { error: uploadError } = await supabase.storage

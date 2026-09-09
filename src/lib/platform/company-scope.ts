@@ -1,22 +1,23 @@
-import { getCurrentRole } from "./permissions";
+import "server-only";
+import { can, getAccessContext } from "./permissions";
 
 /**
  * Active company for the current request/session.
  *
- * Until real auth/middleware lands:
- * - `SKY_ACTIVE_COMPANY_ID` may pin a company for local/manual scoping
- * - `null` means unrestricted (admin/dev pre-auth mode)
+ * Verified profile selection, with database membership validation.
+ * A null selection is permitted only for a global Admin without a membership.
  */
-export function getActiveCompanyId(): string | null {
-  const fromEnv = process.env.SKY_ACTIVE_COMPANY_ID?.trim();
-  return fromEnv || null;
+export async function getActiveCompanyId(): Promise<string | null> {
+  const context = await getAccessContext();
+  if (!context?.hasAccess) throw new Error("Authentication and company membership required.");
+  return context.companyId;
 }
 
-export function isUnrestrictedCompanyScope(): boolean {
-  if (getActiveCompanyId()) {
+export async function isUnrestrictedCompanyScope(): Promise<boolean> {
+  if (await getActiveCompanyId()) {
     return false;
   }
-  return getCurrentRole() === "admin";
+  return (await getAccessContext())?.isAdmin === true;
 }
 
 /** Pure helper — testable without env/role stubs. */
@@ -59,24 +60,24 @@ export function resolveWritableCompanyIdWith(
 }
 
 /**
- * Deny cross-company access when an active company is set.
+ * Require membership in the record's company (or global Admin).
  * Returns an error message or null when access is allowed.
  */
-export function assertCompanyAccess(
+export async function assertCompanyAccess(
   recordCompanyId: string | null | undefined
-): string | null {
-  return assertCompanyAccessWith(getActiveCompanyId(), recordCompanyId);
+): Promise<string | null> {
+  if ((await getAccessContext())?.isAdmin) return null;
+  return recordCompanyId && await can("companies.read", recordCompanyId) ? null : "Access denied for this company.";
 }
 
 /**
  * Resolve the company id that may be written for a create/update.
- * When active company is set, client-supplied company must match (or be empty).
+ * Requested ownership must be accessible; otherwise use the active company.
  */
-export function resolveWritableCompanyId(
+export async function resolveWritableCompanyId(
   requestedCompanyId: string | null | undefined
-): { ok: true; companyId: string | null } | { ok: false; error: string } {
-  return resolveWritableCompanyIdWith(
-    getActiveCompanyId(),
-    requestedCompanyId
-  );
+): Promise<{ ok: true; companyId: string | null } | { ok: false; error: string }> {
+  const companyId = requestedCompanyId?.trim() || await getActiveCompanyId();
+  const error = await assertCompanyAccess(companyId);
+  return error ? { ok: false, error } : { ok: true, companyId };
 }

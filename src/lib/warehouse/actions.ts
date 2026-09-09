@@ -47,7 +47,7 @@ function revalidateWarehousePaths() {
 export async function receiveInventory(
   input: ReceiveInventoryInput
 ): Promise<WarehouseActionResult> {
-  const denied = assertCan("warehouse.write");
+  const denied = await assertCan("warehouse.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -114,7 +114,7 @@ export async function receiveInventory(
 export async function issueInventory(
   input: IssueInventoryInput
 ): Promise<WarehouseActionResult> {
-  const denied = assertCan("warehouse.write");
+  const denied = await assertCan("warehouse.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -147,7 +147,7 @@ export async function issueInventory(
 export async function transferInventory(
   input: TransferInventoryInput
 ): Promise<WarehouseActionResult> {
-  const denied = assertCan("warehouse.write");
+  const denied = await assertCan("warehouse.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -179,7 +179,7 @@ export async function transferInventory(
 export async function adjustInventory(
   input: AdjustInventoryInput
 ): Promise<WarehouseActionResult> {
-  const denied = assertCan("warehouse.write");
+  const denied = await assertCan("warehouse.write");
   if (denied) {
     return { success: false, error: denied };
   }

@@ -289,8 +289,8 @@ async function selectShipments(
   };
 }
 
-function filterShipmentsByActiveCompany(shipments: Shipment[]): Shipment[] {
-  const active = logisticsActiveCompanyId();
+async function filterShipmentsByActiveCompany(shipments: Shipment[]): Promise<Shipment[]> {
+  const active = await logisticsActiveCompanyId();
   if (!active) return shipments;
   return shipments.filter((item) => {
     const companyId = item.company_id ?? item.contract?.company_id ?? null;
@@ -300,7 +300,7 @@ function filterShipmentsByActiveCompany(shipments: Shipment[]): Shipment[] {
 
 export async function getShipments(): Promise<ShipmentsResult> {
   const supabase = await createClient();
-  const activeCompanyId = logisticsActiveCompanyId();
+  const activeCompanyId = await logisticsActiveCompanyId();
 
   const { rows, error } = await selectShipments(async (columns) => {
     let query = supabase
@@ -334,7 +334,7 @@ export async function getShipments(): Promise<ShipmentsResult> {
       if (legacy.error) {
         return { data: null, stats: null, error: legacy.error };
       }
-      const shipments = filterShipmentsByActiveCompany(
+      const shipments = await filterShipmentsByActiveCompany(
         await hydrateShipments(legacy.rows)
       );
       return { data: shipments, stats: computeStats(shipments), error: null };
@@ -343,7 +343,7 @@ export async function getShipments(): Promise<ShipmentsResult> {
     return { data: null, stats: null, error };
   }
 
-  const shipments = filterShipmentsByActiveCompany(
+  const shipments = await filterShipmentsByActiveCompany(
     await hydrateShipments(rows)
   );
 
@@ -358,7 +358,7 @@ export async function getShipmentsByContractId(
   contractId: string
 ): Promise<{ data: Shipment[]; error: string | null }> {
   const supabase = await createClient();
-  const activeCompanyId = logisticsActiveCompanyId();
+  const activeCompanyId = await logisticsActiveCompanyId();
 
   const { rows, error } = await selectShipments(async (columns) => {
     let query = supabase
@@ -380,7 +380,7 @@ export async function getShipmentsByContractId(
   }
 
   return {
-    data: filterShipmentsByActiveCompany(await hydrateShipments(rows)),
+    data: await filterShipmentsByActiveCompany(await hydrateShipments(rows)),
     error: null,
   };
 }
@@ -408,7 +408,7 @@ export async function getShipmentById(id: string): Promise<ShipmentResult> {
 
   const [shipment] = await hydrateShipments([rows[0]]);
   const companyId = shipment.company_id ?? shipment.contract?.company_id ?? null;
-  const denied = assertLogisticsRead(companyId);
+  const denied = await assertLogisticsRead(companyId);
   if (denied) {
     return { data: null, error: denied };
   }
@@ -436,7 +436,7 @@ export type BusinessCaseOption = {
 
 export async function getContractOptions(): Promise<ContractOption[]> {
   const supabase = await createClient();
-  const activeCompanyId = logisticsActiveCompanyId();
+  const activeCompanyId = await logisticsActiveCompanyId();
 
   let query = supabase
     .from("contracts")
@@ -464,7 +464,7 @@ export async function getContractOptions(): Promise<ContractOption[]> {
 
 export async function getBusinessCaseOptions(): Promise<BusinessCaseOption[]> {
   const supabase = await createClient();
-  const activeCompanyId = logisticsActiveCompanyId();
+  const activeCompanyId = await logisticsActiveCompanyId();
 
   let query = supabase
     .from("business_cases")

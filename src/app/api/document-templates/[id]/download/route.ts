@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertCan } from "@/lib/platform/permissions";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const denied = assertCan("documents.read");
+  const denied = await assertCan("documents.read");
   if (denied) return Response.json({ error: denied }, { status: 403 });
   const { id } = await context.params;
   const client = await createClient();

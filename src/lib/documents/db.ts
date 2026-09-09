@@ -698,12 +698,12 @@ export async function getDocumentSignedUrls(
     company_id?: string | null;
   }>
 ): Promise<{ urls: Record<string, string>; error: string | null }> {
-  const denied = assertCan("documents.read");
+  const denied = await assertCan("documents.read");
   if (denied) {
     return { urls: {}, error: denied };
   }
 
-  const owned = filterOwnedDocumentsForSigning(documents);
+  const owned = await filterOwnedDocumentsForSigning(documents);
   const withPath = owned.filter((doc) => doc.file_path || doc.storage_path);
   if (!withPath.length) return { urls: {}, error: null };
 

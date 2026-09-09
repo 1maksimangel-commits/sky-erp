@@ -67,7 +67,7 @@ function lineTotal(quantity: number, unitPrice: number, taxRate: number) {
 export async function createInvoice(
   input: InvoiceFormInput
 ): Promise<FinanceActionResult> {
-  const denied = assertCan("finance.write");
+  const denied = await assertCan("finance.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -265,7 +265,7 @@ export async function createInvoice(
 export async function registerPayment(
   input: PaymentFormInput
 ): Promise<FinanceActionResult> {
-  const denied = assertCan("finance.write");
+  const denied = await assertCan("finance.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -424,7 +424,7 @@ export async function registerPayment(
 export async function createBankAccount(
   input: BankAccountFormInput
 ): Promise<FinanceActionResult> {
-  const denied = assertCan("finance.write");
+  const denied = await assertCan("finance.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -473,7 +473,7 @@ export async function createBankAccount(
 export async function upsertExchangeRate(
   input: ExchangeRateFormInput
 ): Promise<FinanceActionResult> {
-  const denied = assertCan("finance.write");
+  const denied = await assertCan("finance.write");
   if (denied) {
     return { success: false, error: denied };
   }

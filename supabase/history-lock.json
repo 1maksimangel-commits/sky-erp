@@ -46,8 +46,8 @@
     "20260903180000_company_business_role.sql": "90d7de14b6b0c1c4018e93f4c9133bcb7300f12eabc4c127f93a911f730b0ddc"
   },
   "reviewedSources": {
-    "src/lib/logistics/db.ts": "17fdb0e5de9774b72ddc22c6a3c808099134b39d20864da24400119fa0f877d2",
-    "src/lib/documents/db.ts": "5b46da2346964d48a0e3ce76dac5bb1dae0ff6f9e464611a46c5ceb360997314",
+    "src/lib/logistics/db.ts": "60aabd3411f7a5b11c9adba12d957b320f03ce90758831e06550bb24af952ee5",
+    "src/lib/documents/db.ts": "4f1bd7c573b5ca0ab7ca0059b79a210368badb2c9e4e438a01d1e64497811445",
     "src/lib/platform/ai.ts": "afd5a5a9402680c2942d9ed576c09a8072eaa672dbd06a016b468aa1cf6fe42f"
   }
 }

@@ -3,6 +3,7 @@
 import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { signOut } from "@/lib/auth/actions";
 
 export function UserMenu() {
   const [open, setOpen] = useState(false);
@@ -26,11 +27,11 @@ export function UserMenu() {
         className="inline-flex items-center gap-2 rounded-full border border-border bg-accent/40 py-1 pl-1 pr-2 text-left hover:bg-accent"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background">
-          AD
+          SKY
         </span>
         <span className="hidden min-w-0 sm:block">
           <span className="block truncate text-xs font-medium text-foreground">
-            Admin
+            Account
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
             SKY ERP
@@ -42,8 +43,8 @@ export function UserMenu() {
       {open ? (
         <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
           <div className="border-b border-border px-3 py-3">
-            <p className="text-sm font-medium text-foreground">Admin User</p>
-            <p className="text-xs text-muted-foreground">admin@sky-erp.local</p>
+            <p className="text-sm font-medium text-foreground">Signed-in account</p>
+            <p className="text-xs text-muted-foreground">View your role in Settings</p>
           </div>
           <div className="p-1.5">
             <Link
@@ -62,14 +63,13 @@ export function UserMenu() {
               <Settings className="h-4 w-4 text-muted-foreground" />
               Settings
             </Link>
-            <button
-              type="button"
+            <form action={signOut}><button
+              type="submit"
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => setOpen(false)}
             >
               <LogOut className="h-4 w-4" />
               Sign out
-            </button>
+            </button></form>
           </div>
         </div>
       ) : null}

@@ -1,4 +1,5 @@
 "use server";
+import { companyStoragePath } from "@/lib/documents/storage-scope";
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -91,7 +92,7 @@ export async function createCrmCustomer(
     return { success: false, error: "Legal name is required." };
   }
 
-  const companyScope = resolveWritableCompanyId(null);
+  const companyScope = await resolveWritableCompanyId(null);
   if (!companyScope.ok) {
     return { success: false, error: companyScope.error };
   }
@@ -381,7 +382,7 @@ export async function uploadCrmAttachment(input: {
   formData: FormData;
   title?: string | null;
 }): Promise<CrmActionResult<{ id: string }>> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) {
     return { success: false, error: denied };
   }
@@ -402,7 +403,7 @@ export async function uploadCrmAttachment(input: {
 
   const attachmentId = randomUUID();
   const safeName = sanitizeFileName(file.name);
-  const filePath = `crm_customer/${input.customerId}/${attachmentId}/${safeName}`;
+  const filePath = await companyStoragePath(`crm_customer/${input.customerId}/${attachmentId}/${safeName}`, { type: "crm_customer", id: input.customerId });
   const title =
     nullIfEmpty(input.title) ||
     (typeof input.formData.get("title") === "string"
@@ -465,7 +466,7 @@ export async function deleteCrmAttachment(input: {
   /** Ignored — path is loaded from the database for ownership safety. */
   filePath?: string;
 }): Promise<CrmActionResult> {
-  const denied = assertCan("documents.write");
+  const denied = await assertCan("documents.write");
   if (denied) {
     return { success: false, error: denied };
   }
