@@ -89,7 +89,7 @@ export async function POST(request: Request) {
         send({
           stage: "uploading_storage",
           progress: 20,
-          message: "Uploading PDF",
+          message: "Uploading source",
         });
 
         const created = await createImportAndStorePdf(file);
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
         send({
           stage: "sending_ai",
           progress: 40,
-          message: "Sending PDF to AI",
+          message: "Extracting Contract data",
         });
 
         const result = await runExtractionPipeline({

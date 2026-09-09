@@ -12,13 +12,7 @@ import type { Counterparty } from "@/lib/counterparties";
 import type { Product } from "@/lib/products";
 
 function normalizeName(value: string | null | undefined): string {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/["'`]/g, "")
-    .replace(/\b(llc|ltd|inc|co|corp|gmbh|ooo|ao|zao|pjsc|jsc)\b/g, "")
-    .replace(/[^a-z0-9\u0400-\u04ff\u4e00-\u9fff]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (value ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function scoreNames(a: string, b: string): number {

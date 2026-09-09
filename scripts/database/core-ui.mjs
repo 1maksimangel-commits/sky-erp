@@ -72,6 +72,9 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
       check(!attached.error, 'SSR session cookies');
       const cookie = [...jar].map(([name,value]) => `${name}=${value}`).join('; ');
       const ownRoutes = [
+        ['/contracts', 'Contracts'], ['/contracts?new=1', 'New Contract'],
+        ...(fixture.contractId ? [[`/contracts/${fixture.contractId}`, 'Legal parties']] : []),
+        ...(fixture.importId ? [[`/contracts/import/${fixture.importId}`, 'Review imported contract']] : []),
         ['/companies', 'SKY TEST'], ['/counterparties', 'PACIFIC TEST SEAFOOD'], ['/products', 'Pacific Cod'], ['/business-cases', 'Updated fictional Deal'],
         [`/companies/${fixture.company}`, 'SKY TEST'], [`/counterparties/${fixture.parties[0]}`, 'PACIFIC TEST SEAFOOD'],
         [`/products/${fixture.products[0]}`, 'Pacific Cod'], [`/business-cases/${fixture.deal}`, 'Updated fictional Deal'],

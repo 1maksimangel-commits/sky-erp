@@ -6,6 +6,22 @@ import type { ContractFormInput } from "@/lib/contracts/form-types";
 import { validateContractFormInput } from "@/lib/contracts/validation";
 import { recordEntityEvent } from "@/lib/platform/audit";
 import { assertCan } from "@/lib/platform/permissions";
+import { getCounterparties } from "@/lib/counterparties";
+
+export async function getContractCounterpartyOptions() {
+  return getCounterparties();
+}
+
+export async function changeContractStatus(id: string, status: string): Promise<ContractActionResult> {
+  const denied = await assertCan("contracts.write");
+  if (denied) return { success: false, error: denied };
+  if (!["Active", "Closed", "Cancelled"].includes(status)) return { success: false, error: "Invalid lifecycle transition." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("contracts").update({ status }).eq("id", id).is("deleted_at", null).select("id").maybeSingle();
+  if (error || !data) return { success: false, error: error?.message ?? "Contract not found or write access denied." };
+  revalidateContractPaths(id);
+  return { success: true, id };
+}
 
 export type ContractActionResult =
   | { success: true; id?: string }
@@ -58,7 +74,13 @@ function formInputToRow(
     consignee_id: nullIfEmpty(input.consignee_id),
     business_case_id: nullIfEmpty(input.business_case_id),
     deal_id: nullIfEmpty(input.deal_id ?? input.business_case_id),
-    business_role: nullIfEmpty(input.business_role),
+    business_role: null,
+    legal_snapshot: input.legal_snapshot ?? {},
+    payment_terms: input.payment_terms ?? null,
+    delivery_place: input.delivery_place ?? null,
+    destination_port: input.destination_port ?? null,
+    loading_port: input.loading_port ?? null,
+    expected_shipment_date: input.expected_shipment_date ?? null,
     currency: importDraft ? nullIfEmpty(input.currency) : nullIfEmpty(input.currency) ?? "USD",
     amount: input.amount,
     incoterms: nullIfEmpty(input.incoterms),
@@ -120,11 +142,8 @@ export async function createContract(
     return { success: false, error: denied };
   }
 
-  const importDraft =
-    options.workflow === "import-draft" &&
-    input.status.trim().toLowerCase() === "draft";
   const validationError = validateContractFormInput(input, {
-    allowIncompleteDraft: importDraft,
+    allowIncompleteDraft: false,
   });
   if (validationError) {
     return { success: false, error: validationError };
@@ -137,11 +156,12 @@ export async function createContract(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("contracts")
-    .insert(formInputToRow(input, options))
-    .select("id, contract_number, status, business_case_id, deal_id, business_role")
-    .single();
+  const { data: savedId, error } = await supabase.rpc("save_contract", {
+    p_id: null, p_contract: formInputToRow(input, options),
+    p_parties: input.parties ?? [], p_lines: input.product_lines ?? [],
+    p_import_id: null, p_review: null,
+  });
+  const data = { ...input, id: String(savedId) };
 
   if (error) {
     return { success: false, error: formatSupabaseError(error) };
@@ -204,10 +224,11 @@ export async function updateContract(
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase
-    .from("contracts")
-    .update(formInputToRow(input))
-    .eq("id", id);
+  const { error } = await supabase.rpc("save_contract", {
+    p_id: id, p_contract: formInputToRow(input),
+    p_parties: input.parties ?? [], p_lines: input.product_lines ?? [],
+    p_import_id: null, p_review: null,
+  });
 
   if (error) {
     return { success: false, error: formatSupabaseError(error) };

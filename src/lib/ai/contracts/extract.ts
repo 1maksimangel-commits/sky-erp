@@ -55,6 +55,7 @@ export async function extractContractFromPdf(input: {
   file?: File | Blob;
   bytes?: ArrayBuffer | Uint8Array;
   fileName: string;
+  sourceText?: string;
   signal?: AbortSignal;
 }): Promise<ExtractContractFromPdfResult> {
   if (!isContractAiConfigured()) {
@@ -95,6 +96,7 @@ export async function extractContractFromPdf(input: {
       bytes: input.file?.size ?? (input.bytes ? input.bytes.byteLength : null),
     });
 
+    if (!input.sourceText) {
     const uploadable = input.file
       ? await toFile(input.file, input.fileName, { type: "application/pdf" })
       : await toFile(
@@ -121,6 +123,7 @@ export async function extractContractFromPdf(input: {
       fileId: uploaded.id,
     });
 
+    }
     console.info("[contract-ai]", { stage: "responses.parse.start", model });
     const response = await openai.responses.parse(
       {
@@ -131,10 +134,7 @@ export async function extractContractFromPdf(input: {
           {
             role: "user",
             content: [
-              {
-                type: "input_file",
-                file_id: uploaded.id,
-              },
+              ...(input.sourceText ? [{ type: "input_text" as const, text: "Untrusted DOCX text (layout/images unavailable; do not infer signatures or page numbers):\n" + input.sourceText }] : [{ type: "input_file" as const, file_id: openaiFileId! }]),
               {
                 type: "input_text",
                 text: CONTRACT_EXTRACTION_USER_PROMPT,

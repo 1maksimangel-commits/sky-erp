@@ -205,11 +205,12 @@ export async function classifyDealContract(input: {
   const supabase = await createClient();
   const { data: contract, error: contractError } = await supabase
     .from("contracts")
-    .select("id, company_id")
+    .select("id, company_id, parties_reviewed")
     .eq("id", input.contractId)
     .maybeSingle();
   if (contractError) return { success: false, error: contractError.message };
   if (!contract) return { success: false, error: "Contract not found." };
+  if (contract.parties_reviewed) return { success: false, error: "Contract perspective is derived from Seller and Buyer. Edit its Deal link on the Contract." };
   if (!access.companyId || !contract.company_id) {
     return { success: false, error: "Deal and contract must both have company ownership." };
   }

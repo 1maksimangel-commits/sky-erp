@@ -1,4 +1,5 @@
-import { randomUUID } from "crypto";
+import { readContractDocxText, DOCX_MIME } from "@/lib/contracts/import/docx-text";
+import { randomUUID, createHash } from "crypto";
 import { companyStoragePath } from "@/lib/documents/storage-scope";
 import { buildImportMatches } from "@/lib/ai/contracts/match";
 import { asString } from "@/lib/ai/contracts/schema";
@@ -35,6 +36,8 @@ export function asWarnings(value: unknown): string[] {
 
 export function mapImportRow(row: Record<string, unknown>): ContractImportRecord {
   return {
+    company_id: (row.company_id as string | null) ?? null,
+    file_hash: (row.file_hash as string | null) ?? null,
     id: String(row.id),
     file_path: (row.file_path as string | null) ?? null,
     file_name: (row.file_name as string | null) ?? null,
@@ -64,7 +67,9 @@ export function validateImportPdfFile(file: File): string | null {
   const safeName = sanitizeFileName(file.name);
   const looksPdf =
     mime === "application/pdf" || safeName.toLowerCase().endsWith(".pdf");
-  if (!looksPdf) return "Only PDF files are allowed for import.";
+  const looksDocx = safeName.toLowerCase().endsWith(".docx");
+  if (looksDocx && (!mime || mime === DOCX_MIME || mime === "application/octet-stream")) return null;
+  if (!looksPdf) return "Only PDF and DOCX files are allowed for import.";
   if (mime && mime !== "application/pdf" && mime !== "application/octet-stream") {
     return `Invalid MIME type "${mime}". Expected application/pdf.`;
   }
@@ -98,7 +103,13 @@ export async function validateImportPdfMagic(
 export async function validateImportPdfFileStrict(
   file: File
 ): Promise<string | null> {
-  return validateImportPdfFile(file) ?? (await validateImportPdfMagic(file));
+  const error = validateImportPdfFile(file);
+  if (error) return error;
+  if (file.name.toLowerCase().endsWith(".docx")) {
+    try { readContractDocxText(new Uint8Array(await file.arrayBuffer())); return null; }
+    catch (e) { return e instanceof Error ? e.message : "Invalid DOCX."; }
+  }
+  return validateImportPdfMagic(file);
 }
 
 export type ImportProgressEvent =
@@ -129,7 +140,7 @@ function formatDbError(error: { message: string; code?: string }): string {
   if (
     /relation|schema cache|PGRST205|does not exist|PGRST204/i.test(error.message)
   ) {
-    return "Contract import tables are missing. Apply supabase/migrations/20260804230000_contract_pdf_import.sql in the Supabase SQL Editor (or `supabase db push` when the project is linked).";
+    return "Contract import schema is incomplete. Verify the canonical database replay gate before using imports.";
   }
   if (/bucket not found|NoSuchBucket/i.test(error.message)) {
     return "Storage bucket `documents` is missing. Apply the documents DMS migrations.";
@@ -147,12 +158,14 @@ export async function persistExtractionAndMatches(input: {
 }> {
   logContractImport("persist.start", { importId: input.importId });
   const supabase = await createClient();
-  const [{ data: companies }, { data: counterparties }, { data: products }] =
-    await Promise.all([
+  const results = await Promise.all([
       getActiveCompanies(),
       getActiveCounterparties(),
       getProducts(),
     ]);
+  const lookupError = results.find(result => result.error)?.error;
+  if (lookupError) throw new Error(`Entity matching failed: ${lookupError}`);
+  const [{ data: companies }, { data: counterparties }, { data: products }] = results;
 
   const matches = buildImportMatches({
     extraction: input.extraction,
@@ -212,59 +225,45 @@ export async function createImportAndStorePdf(file: File): Promise<{
   const validationError = await validateImportPdfFileStrict(file);
   if (validationError) throw new Error(validationError);
 
-  const importId = randomUUID();
-  const fileName = sanitizeFileName(file.name);
-  const filePath = await companyStoragePath(`imports/${importId}/${fileName}`);
   const supabase = await createClient();
   const createdBy = await resolveUserId(supabase);
-
-  logContractImport("storage.upload.start", {
-    importId,
-    fileName,
-    bytes: file.size,
-    mime: file.type || null,
-  });
-
-  const { error: uploadError } = await supabase.storage
-    .from(CONTRACT_IMPORT_BUCKET)
-    .upload(filePath, file, {
-      contentType: "application/pdf",
-      upsert: false,
-    });
-
-  if (uploadError) {
-    logContractImport("storage.upload.error", {
-      importId,
-      message: uploadError.message,
-    });
-    throw new Error(`Storage upload failed: ${formatDbError(uploadError)}`);
+  if (!createdBy) throw new Error("Authenticated upload required.");
+  const { data: companyId, error: companyError } = await supabase.rpc("active_company_id");
+  if (companyError || !companyId) throw new Error("Select an authorized workspace before importing.");
+  const mimeType = file.name.toLowerCase().endsWith(".docx") ? DOCX_MIME : "application/pdf";
+  const fileHash = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
+  const { data: existing, error: lookupError } = await supabase.from("contract_imports").select("id, file_path, file_name, created_contract_id, status, mime_type").eq("company_id", companyId).eq("file_hash", fileHash).maybeSingle();
+  if (lookupError) throw new Error(formatDbError(lookupError));
+  if (existing) {
+    if (["uploaded", "failed"].includes(existing.status) && !existing.created_contract_id && existing.file_path) {
+      const { data: retained } = await supabase.storage.from(CONTRACT_IMPORT_BUCKET).download(existing.file_path);
+      if (!retained) {
+        const { error: retryError } = await supabase.storage.from(CONTRACT_IMPORT_BUCKET).upload(existing.file_path, file, { contentType: existing.mime_type || mimeType, upsert: false });
+        if (retryError) throw new Error("Unable to resume original upload. The registered import is retained.");
+        const { error: statusError } = await supabase.from("contract_imports").update({ status: "processing", error_message: null }).eq("id", existing.id);
+        if (statusError) throw new Error(formatDbError(statusError));
+        return { importId: existing.id, filePath: existing.file_path, fileName: existing.file_name };
+      }
+    }
+    throw new Error(existing.created_contract_id ? `Original already imported. Open /contracts/${existing.created_contract_id}.` : `Upload already retained. Open /contracts/import/${existing.id} to resume review or extraction.`);
   }
-
-  logContractImport("storage.upload.done", { importId, filePath });
-  logContractImport("db.insert.start", { importId });
-
+  const importId = randomUUID();
+  const fileName = file.name;
+  const filePath = await companyStoragePath(`imports/${importId}/${sanitizeFileName(file.name)}`);
+  // Register immutable identity before upload. A failed upload retains its audit row.
   const { error } = await supabase.from("contract_imports").insert({
-    id: importId,
-    file_path: filePath,
-    file_name: fileName,
-    mime_type: "application/pdf",
-    file_size: file.size,
-    status: "processing",
-    created_by: createdBy,
-    warnings: [],
+    id: importId, company_id: companyId, file_path: filePath, file_name: fileName,
+    mime_type: mimeType, file_size: file.size, file_hash: fileHash,
+    status: "uploaded", created_by: createdBy, warnings: [],
   });
-
-  if (error) {
-    logContractImport("db.insert.error", {
-      importId,
-      code: error.code,
-      message: error.message,
-    });
-    await supabase.storage.from(CONTRACT_IMPORT_BUCKET).remove([filePath]);
-    throw new Error(formatDbError(error));
+  if (error) throw new Error(error.code === "23505" ? "This source is already registered. Open the existing import." : formatDbError(error));
+  const { error: uploadError } = await supabase.storage.from(CONTRACT_IMPORT_BUCKET).upload(filePath, file, { contentType: mimeType, upsert: false });
+  if (uploadError) {
+    await markImportFailed(importId, "Original upload failed. Retry the original file.");
+    throw new Error(`Original upload failed for import ${importId}: ${formatDbError(uploadError)}`);
   }
-
-  logContractImport("db.insert.done", { importId });
+  const { error: processingError } = await supabase.from("contract_imports").update({ status: "processing" }).eq("id", importId);
+  if (processingError) throw new Error(formatDbError(processingError));
   return { importId, filePath, fileName };
 }
 
@@ -299,7 +298,9 @@ export async function runExtractionPipeline(input: {
     bytes: input.file.size,
   });
 
+  const sourceText = input.fileName.toLowerCase().endsWith(".docx") ? readContractDocxText(new Uint8Array(await input.file.arrayBuffer())) : undefined;
   const extracted = await extractContractFromPdf({
+    sourceText,
     file: input.file,
     fileName: input.fileName,
     signal: input.signal,
@@ -327,7 +328,7 @@ export async function runExtractionPipeline(input: {
   const persisted = await persistExtractionAndMatches({
     importId: input.importId,
     extraction: extracted.extraction,
-    warnings: extracted.warnings,
+    warnings: sourceText ? [...extracted.warnings, "DOCX text extraction does not verify image signatures, seals, or original pagination. Review the original."] : extracted.warnings,
   });
 
   input.onProgress?.({ stage: "preparing_review", progress: 95 });
@@ -348,7 +349,7 @@ export async function loadImportFileFromStorage(importId: string): Promise<{
   const supabase = await createClient();
   const { data: row, error } = await supabase
     .from("contract_imports")
-    .select("id, file_path, file_name")
+    .select("id, file_path, file_name, file_hash, mime_type, created_contract_id")
     .eq("id", importId)
     .maybeSingle();
 
@@ -358,11 +359,13 @@ export async function loadImportFileFromStorage(importId: string): Promise<{
     );
   }
 
-  await supabase
+  if (row.created_contract_id) throw new Error("Confirmed imports cannot be extracted again.");
+  const { error: processingError } = await supabase
     .from("contract_imports")
     .update({ status: "processing", error_message: null })
     .eq("id", importId);
 
+  if (processingError) throw new Error(formatDbError(processingError));
   const { data: blob, error: downloadError } = await supabase.storage
     .from(CONTRACT_IMPORT_BUCKET)
     .download(row.file_path);
@@ -375,8 +378,14 @@ export async function loadImportFileFromStorage(importId: string): Promise<{
     throw new Error(message);
   }
 
+  const hash = createHash("sha256").update(Buffer.from(await blob.arrayBuffer())).digest("hex");
+  if (row.file_hash && row.file_hash !== hash) throw new Error("Original document hash mismatch.");
+  if (!row.file_hash) {
+    const { error: hashError } = await supabase.from("contract_imports").update({ file_hash: hash }).eq("id", importId);
+    if (hashError) throw new Error(formatDbError(hashError));
+  }
   const fileName = row.file_name || "contract.pdf";
-  const file = new File([blob], fileName, { type: "application/pdf" });
+  const file = new File([blob], fileName, { type: row.mime_type || "application/pdf" });
   logContractImport("storage.download.done", {
     importId,
     fileName,

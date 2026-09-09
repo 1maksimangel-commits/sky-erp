@@ -1,4 +1,5 @@
 "use client";
+import { partyName, contractDirection } from "@/lib/contracts/parties";
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -12,6 +13,7 @@ import {
 } from "@/lib/contracts/workspace";
 
 type ContractWorkspaceShellProps = {
+  selectedCompanyId?: string | null;
   contract: Contract;
   relatedContracts?: Contract[];
   children: React.ReactNode;
@@ -60,6 +62,7 @@ function EntityLink({
 }
 
 export function ContractWorkspaceShell({
+  selectedCompanyId = null,
   contract,
   relatedContracts = [],
   children,
@@ -69,6 +72,7 @@ export function ContractWorkspaceShell({
 
   return (
     <div className="space-y-6">
+      <p className="text-xs text-muted-foreground">Selected company perspective: {contractDirection(contract.parties, selectedCompanyId)}</p>
       <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-sm">
         <Link
           href="/contracts"
@@ -121,17 +125,17 @@ export function ContractWorkspaceShell({
                   ? `/counterparties/${contract.buyer.id}`
                   : null
               }
-              label={contract.buyer?.legal_name}
+              label={partyName(contract.parties, "buyer")}
             />
             {" · "}
-            Supplier:{" "}
+            Seller:{" "}
             <EntityLink
               href={
                 contract.supplier?.id
                   ? `/counterparties/${contract.supplier.id}`
                   : null
               }
-              label={contract.supplier?.legal_name}
+              label={partyName(contract.parties, "seller")}
             />
           </p>
         </div>
@@ -162,7 +166,7 @@ export function ContractWorkspaceShell({
         </div>
       </div>
 
-      {relatedContracts.length ? <section className="rounded-xl border border-border bg-card p-4"><h3 className="text-sm font-semibold">Related Contracts</h3><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-muted-foreground"><tr><th className="py-2">Role</th><th>Contract</th><th>Company / counterparty</th><th>Amount</th><th>Status</th></tr></thead><tbody className="divide-y divide-border">{relatedContracts.map((item) => <tr key={item.id}><td className="py-2">{item.business_role ?? "Other"}</td><td><Link href={`/contracts/${item.id}`} className="underline">{item.contract_number}</Link></td><td>{[item.company?.name, item.buyer?.legal_name ?? item.supplier?.legal_name].filter(Boolean).join(" / ") || "—"}</td><td>{item.amount ?? "—"} {item.currency ?? ""}</td><td>{item.status ?? "Draft"}</td></tr>)}</tbody></table></div></section> : null}
+      {relatedContracts.length ? <section className="rounded-xl border border-border bg-card p-4"><h3 className="text-sm font-semibold">Related Contracts</h3><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-muted-foreground"><tr><th className="py-2">Role</th><th>Contract</th><th>Company / counterparty</th><th>Amount</th><th>Status</th></tr></thead><tbody className="divide-y divide-border">{relatedContracts.map((item) => <tr key={item.id}><td className="py-2">{contractDirection(item.parties, selectedCompanyId)}</td><td><Link href={`/contracts/${item.id}`} className="underline">{item.contract_number}</Link></td><td>{partyName(item.parties, "seller")} → {partyName(item.parties, "buyer")}</td><td>{item.amount ?? "—"} {item.currency ?? ""}</td><td>{item.status ?? "Draft"}</td></tr>)}</tbody></table></div></section> : null}
       <div>{children}</div>
     </div>
   );

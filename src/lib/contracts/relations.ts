@@ -111,7 +111,7 @@ export async function getBusinessCaseForContract(input: {
 
   const { data: contract, error: contractError } = await supabase
     .from("contracts")
-    .select("id, business_case_id, contract_number")
+    .select("id, business_case_id, deal_id, parties_reviewed, contract_number")
     .eq("id", input.contractId)
     .maybeSingle();
 
@@ -119,6 +119,7 @@ export async function getBusinessCaseForContract(input: {
     return { data: null, error: contractError.message };
   }
 
+  if (contract?.parties_reviewed) return contract.deal_id ? loadBusinessCaseById(contract.deal_id) : { data: null, error: null };
   if (contract?.business_case_id) {
     const byFk = await loadBusinessCaseById(contract.business_case_id);
     if (byFk.data || byFk.error) {

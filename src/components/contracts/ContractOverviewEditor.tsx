@@ -1,11 +1,13 @@
 "use client";
+import { ContractPartyFields, ContractLineFields } from "@/components/contracts/ContractLegalFields";
 
 import { AlertCircle, Check, Loader2, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Toast } from "@/components/ui/Toast";
-import { updateContract } from "@/lib/contracts/actions";
+import { updateContract, changeContractStatus } from "@/lib/contracts/actions";
+import type { Product } from "@/lib/products";
 import type { Contract } from "@/lib/contracts/db";
 import {
   CONTRACT_STATUSES,
@@ -21,12 +23,22 @@ import type { Company } from "@/lib/companies";
 import type { Counterparty } from "@/lib/counterparties";
 
 type ContractOverviewEditorProps = {
+  products?: Product[];
+  canEdit?: boolean;
   contract: Contract;
   companies: Company[];
   counterparties: Counterparty[];
 };
 
 type FormState = {
+  parties: NonNullable<ContractFormInput["parties"]>;
+  product_lines: NonNullable<ContractFormInput["product_lines"]>;
+  legal_snapshot: Record<string, unknown>;
+  payment_terms: string;
+  delivery_place: string;
+  loading_port: string;
+  destination_port: string;
+  expected_shipment_date: string;
   contract_number: string;
   title: string;
   company_id: string;
@@ -51,6 +63,14 @@ function toFormState(contract: Contract): FormState {
   const input = contractToFormInput(contract);
 
   return {
+    parties: input.parties ?? [],
+    product_lines: input.product_lines ?? [],
+    legal_snapshot: input.legal_snapshot ?? {},
+    payment_terms: input.payment_terms ?? "",
+    delivery_place: input.delivery_place ?? "",
+    loading_port: input.loading_port ?? "",
+    destination_port: input.destination_port ?? "",
+    expected_shipment_date: input.expected_shipment_date ?? "",
     contract_number: input.contract_number,
     title: input.title ?? "",
     company_id: input.company_id ?? "",
@@ -74,15 +94,23 @@ function toFormInput(form: FormState): ContractFormInput {
   const parsedAmount = amount ? Number(amount) : null;
 
   return {
+    parties: form.parties,
+    product_lines: form.product_lines,
+    legal_snapshot: form.legal_snapshot,
+    payment_terms: form.payment_terms || null,
+    delivery_place: form.delivery_place || null,
+    loading_port: form.loading_port || null,
+    destination_port: form.destination_port || null,
+    expected_shipment_date: form.expected_shipment_date || null,
     contract_number: form.contract_number.trim(),
     title: form.title.trim() || null,
     company_id: form.company_id,
     buyer_id: form.buyer_id,
     supplier_id: form.supplier_id,
     consignee_id: form.consignee_id,
-    business_case_id: form.business_case_id.trim() || null,
+    business_case_id: form.deal_id.trim() || form.business_case_id.trim() || null,
     deal_id: form.deal_id.trim() || null,
-    business_role: form.business_role.trim() || null,
+    business_role: null,
     currency: form.currency.trim() || "USD",
     amount:
       parsedAmount != null && Number.isFinite(parsedAmount) ? parsedAmount : null,
@@ -136,6 +164,8 @@ function Field({
 }
 
 export function ContractOverviewEditor({
+  products = [],
+  canEdit = false,
   contract,
   companies,
   counterparties,
@@ -148,6 +178,7 @@ export function ContractOverviewEditor({
   const [toast, setToast] = useState<string | null>(null);
 
   function startEditing() {
+    if (!canEdit || contract.status !== "Draft") return;
     setForm(toFormState(contract));
     setError(null);
     setEditing(true);
@@ -222,6 +253,7 @@ export function ContractOverviewEditor({
           <button
             type="button"
             onClick={startEditing}
+            disabled={!canEdit || contract.status !== "Draft"}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -237,7 +269,17 @@ export function ContractOverviewEditor({
         </div>
       ) : null}
 
+      <ContractPartyFields value={form.parties} onChange={parties => setForm(current => ({ ...current, parties }))} companies={companies} counterparties={counterparties} disabled={!editing} />
+      <ContractLineFields value={form.product_lines} onChange={product_lines => setForm(current => ({ ...current, product_lines }))} currency={form.currency} products={products} disabled={!editing} />
+      {canEdit && !editing && !["Closed", "Cancelled"].includes(contract.status ?? "") ? <div className="flex gap-2">{["Active", "Closed", "Cancelled"].filter(status => status !== contract.status).map(status => <button key={status} disabled={saving} className="rounded-md border border-border px-3 py-1.5 text-xs" onClick={async () => {
+        setSaving(true);
+        const result = await changeContractStatus(contract.id, status);
+        setSaving(false);
+        if (!result.success) setError(result.error); else router.refresh();
+      }}>{status === "Active" ? "Mark signed / active" : status === "Closed" ? "Mark completed" : "Cancel Contract"}</button>)}</div> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {(["payment_terms", "delivery_place", "loading_port", "destination_port", "expected_shipment_date"] as const).map(field => <Field key={field} label={field.replaceAll("_", " ")} editing={editing} value={contract[field] ?? "—"}><input className={inputClassName} type={field.endsWith("date") ? "date" : "text"} value={form[field]} onChange={event => setForm(current => ({ ...current, [field]: event.target.value }))} /></Field>)}
+        <Field label="Commercial notes" editing={editing} value={typeof contract.legal_snapshot.notes === "string" ? contract.legal_snapshot.notes : "—"}><textarea className={inputClassName} value={typeof form.legal_snapshot.notes === "string" ? form.legal_snapshot.notes : ""} onChange={event => setForm(current => ({ ...current, legal_snapshot: { ...current.legal_snapshot, notes: event.target.value } }))} /></Field>
         <Field
           label="Contract Number"
           editing={editing}
@@ -268,7 +310,7 @@ export function ContractOverviewEditor({
         </Field>
 
         <Field
-          label="Seller"
+          label="Owning workspace"
           editing={editing}
           value={
             contract.company?.id ? (
@@ -300,73 +342,6 @@ export function ContractOverviewEditor({
         </Field>
 
         <Field
-          label="Buyer"
-          editing={editing}
-          value={
-            contract.buyer?.id ? (
-              <Link
-                href={`/counterparties/${contract.buyer.id}`}
-                className="text-foreground underline-offset-4 hover:underline"
-              >
-                {contract.buyer.legal_name}
-              </Link>
-            ) : (
-              "—"
-            )
-          }
-        >
-          <select
-            value={form.buyer_id}
-            onChange={(e) =>
-              setForm((current) => ({ ...current, buyer_id: e.target.value }))
-            }
-            className={inputClassName}
-          >
-            <option value="">Select buyer</option>
-            {counterparties.map((counterparty) => (
-              <option key={counterparty.id} value={counterparty.id}>
-                {counterparty.legal_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Consignee / грузополучатель"
-          editing={editing}
-          value={
-            contract.consignee?.id ? (
-              <Link
-                href={`/counterparties/${contract.consignee.id}`}
-                className="text-foreground underline-offset-4 hover:underline"
-              >
-                {contract.consignee.legal_name}
-              </Link>
-            ) : (
-              "—"
-            )
-          }
-        >
-          <select
-            value={form.consignee_id}
-            onChange={(e) =>
-              setForm((current) => ({
-                ...current,
-                consignee_id: e.target.value,
-              }))
-            }
-            className={inputClassName}
-          >
-            <option value="">Select consignee</option>
-            {counterparties.map((counterparty) => (
-              <option key={counterparty.id} value={counterparty.id}>
-                {counterparty.legal_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
           label="Currency"
           editing={editing}
           value={contract.currency ?? "—"}
@@ -386,12 +361,6 @@ export function ContractOverviewEditor({
           </select>
         </Field>
 
-        <Field label="Business role" editing={editing} value={contract.business_role ?? "—"}>
-          <select value={form.business_role} onChange={(e) => setForm((current) => ({ ...current, business_role: e.target.value }))} className={inputClassName}>
-            <option value="">Not specified</option>
-            {(["Purchase", "Sale", "Commission", "Logistics", "Other"] as const).map((role) => <option key={role} value={role}>{role}</option>)}
-          </select>
-        </Field>
 
         <Field label="Deal link (optional)" editing={editing} value={contract.deal_id ? <Link href={`/business-cases/${contract.deal_id}`} className="underline-offset-4 hover:underline">{contract.deal_id}</Link> : "Unlinked"}>
           <input type="text" placeholder="Deal ID" value={form.deal_id} onChange={(e) => setForm((current) => ({ ...current, deal_id: e.target.value }))} className={inputClassName} />

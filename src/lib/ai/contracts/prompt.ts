@@ -22,5 +22,8 @@ Populate all sections: general, company, buyer, supplier, consignee, commercial,
 Include when present: contract number/date, seller/buyer/consignee/notify party, product description, scientific name, HS code, packaging, quantity, net/gross weight, unit price, totals, currency, Incoterms, ports, payment terms, delivery period, vessel/container details, bank details, signatures/seals, and referenced annexes.
 If a field is absent or unclear, set value to null with low confidence — never guess.
 
-Determine which party is the internal company vs buyer vs supplier from the document context.
+Extract explicit seller, buyer, payer and beneficiary independently. Their legal names, addresses, tax/registration and bank details belong to that named party.
+Do not infer whether any legal entity is internal to SKY ERP. Internal/external identity is resolved in review, never by extraction.
+Keep company and supplier legacy sections only when explicitly identifiable in the source; never substitute them for an uncertain Seller.
+Contract type is the legal document category, never a global purchase/sale perspective.
 Do not assume the first party is always the seller.`;

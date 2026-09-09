@@ -1,6 +1,16 @@
+import type { ContractPartyInput, ContractLineInput } from "@/lib/contracts/parties";
 import { createClient } from "@/lib/supabase/server";
 
 export type Contract = {
+  company_id: string | null;
+  parties: ContractPartyInput[];
+  product_lines: ContractLineInput[];
+  legal_snapshot: Record<string, unknown>;
+  payment_terms: string | null;
+  delivery_place: string | null;
+  destination_port: string | null;
+  loading_port: string | null;
+  expected_shipment_date: string | null;
   id: string;
   contract_number: string;
   title: string | null;
@@ -34,6 +44,15 @@ type Relation = { id: string; legal_name: string } | { id: string; legal_name: s
 type CompanyRelation = { id: string; name: string } | { id: string; name: string }[] | null;
 
 type ContractRow = {
+  company_id: string | null;
+  parties: ContractPartyInput[];
+  product_lines: ContractLineInput[];
+  legal_snapshot: Record<string, unknown>;
+  payment_terms: string | null;
+  delivery_place: string | null;
+  destination_port: string | null;
+  loading_port: string | null;
+  expected_shipment_date: string | null;
   id: string;
   contract_number: string;
   title: string | null;
@@ -74,6 +93,15 @@ function normalizeCompany(
 
 function normalizeContract(row: ContractRow): Contract {
   return {
+    company_id: row.company_id,
+    parties: row.parties ?? [],
+    product_lines: row.product_lines ?? [],
+    legal_snapshot: row.legal_snapshot ?? {},
+    payment_terms: row.payment_terms,
+    delivery_place: row.delivery_place,
+    destination_port: row.destination_port,
+    loading_port: row.loading_port,
+    expected_shipment_date: row.expected_shipment_date,
     id: row.id,
     contract_number: row.contract_number,
     title: row.title,
@@ -117,6 +145,7 @@ function computeStats(contracts: Contract[]): ContractStats {
 
 const contractColumns = `
   id,
+  company_id,
   contract_number,
   title,
   contract_date,
@@ -128,33 +157,25 @@ const contractColumns = `
   business_case_id,
   deal_id,
   business_role,
+  legal_snapshot, payment_terms, delivery_place, destination_port, loading_port, expected_shipment_date,
+  parties:contract_parties (role_code, internal_company_id, counterparty_id, snapshot),
+  product_lines:contract_products (id, product_id, description, quantity, unit, unit_price, currency, net_weight, gross_weight, size_grade, packing, origin, notes, agreed_amount),
   company:company_id ( id, name ),
   buyer:buyer_id ( id, legal_name ),
   supplier:supplier_id ( id, legal_name ),
   consignee:consignee_id ( id, legal_name )
 ` as const;
 
-function isMissingDeletedAtColumn(error: { code?: string; message: string }): boolean {
-  return /deleted_at|PGRST204|42703/i.test(`${error.code ?? ""} ${error.message}`);
-}
-
 export async function getContracts(): Promise<ContractsResult> {
   const supabase = await createClient();
 
-  let result = await supabase
+  const result = await supabase
     .from("contracts")
     .select(contractColumns)
     .is("deleted_at", null)
     .order("contract_date", { ascending: false, nullsFirst: false })
     .order("contract_number", { ascending: false });
 
-  if (result.error && isMissingDeletedAtColumn(result.error)) {
-    result = await supabase
-      .from("contracts")
-      .select(contractColumns)
-      .order("contract_date", { ascending: false, nullsFirst: false })
-      .order("contract_number", { ascending: false });
-  }
 
   const { data, error } = result;
 
@@ -182,20 +203,13 @@ export type ContractResult =
 export async function getContractById(id: string): Promise<ContractResult> {
   const supabase = await createClient();
 
-  let result = await supabase
+  const result = await supabase
     .from("contracts")
     .select(contractColumns)
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (result.error && isMissingDeletedAtColumn(result.error)) {
-    result = await supabase
-      .from("contracts")
-      .select(contractColumns)
-      .eq("id", id)
-      .maybeSingle();
-  }
 
   const { data, error } = result;
 
@@ -219,6 +233,6 @@ export async function getContractById(id: string): Promise<ContractResult> {
 export async function getRelatedContracts(dealId: string | null, excludeId?: string) {
   if (!dealId) return [] as Contract[];
   const supabase = await createClient();
-  const { data } = await supabase.from("contracts").select(contractColumns).eq("deal_id", dealId).neq("id", excludeId ?? "").order("contract_number");
+  const { data } = await supabase.from("contracts").select(contractColumns).eq("deal_id", dealId).neq("id", excludeId ?? "00000000-0000-0000-0000-000000000000").order("contract_number");
   return ((data ?? []) as ContractRow[]).map(normalizeContract);
 }

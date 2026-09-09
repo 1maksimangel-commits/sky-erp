@@ -99,6 +99,8 @@ export type DealProduct = {
 };
 
 export type DealContract = {
+  parties_reviewed?: boolean;
+  parties?: import("@/lib/contracts/parties").ContractPartyInput[];
   id: string;
   contract_number: string;
   title: string | null;

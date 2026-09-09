@@ -1,4 +1,5 @@
 "use client";
+import { contractDirection, partyName } from "@/lib/contracts/parties";
 
 import {
   AlertCircle,
@@ -201,15 +202,15 @@ export function ContractsView({
         return false;
       }
 
-      if (companyFilter !== "all" && item.company?.id !== companyFilter) {
+      if (companyFilter !== "all" && item.company?.id !== companyFilter && !item.parties.some(p => p.internal_company_id === companyFilter)) {
         return false;
       }
 
-      if (buyerFilter !== "all" && item.buyer?.id !== buyerFilter) {
+      if (buyerFilter !== "all" && !item.parties.some(p => p.role_code === "buyer" && p.counterparty_id === buyerFilter)) {
         return false;
       }
 
-      if (supplierFilter !== "all" && item.supplier?.id !== supplierFilter) {
+      if (supplierFilter !== "all" && !item.parties.some(p => p.role_code === "seller" && p.counterparty_id === supplierFilter)) {
         return false;
       }
 
@@ -221,8 +222,8 @@ export function ContractsView({
         item.contract_number,
         item.title,
         item.company?.name,
-        item.buyer?.legal_name,
-        item.supplier?.legal_name,
+        partyName(item.parties, "buyer"),
+        partyName(item.parties, "seller"),
       ].some((field) => field?.toLowerCase().includes(query));
     });
   }, [
@@ -247,6 +248,7 @@ export function ContractsView({
   }
 
   function openEditModal(contract: Contract) {
+    if (contract.status !== "Draft") { router.push(`/contracts/${contract.id}`); return; }
     setEditingContract(contract);
     setFormOpen(true);
   }
@@ -273,7 +275,7 @@ export function ContractsView({
           className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Upload className="h-3.5 w-3.5" />
-          Import from PDF
+          Import PDF / DOCX
         </button>
         <button
           type="button"
@@ -286,6 +288,7 @@ export function ContractsView({
       </PageActions>
 
       <ContractFormModal
+        products={products}
         open={formOpen}
         contract={editingContract}
         onClose={closeFormModal}
@@ -319,6 +322,7 @@ export function ContractsView({
           companies={companies}
           counterparties={counterparties}
           products={products}
+          businessCases={businessCases}
           onClose={() => setReviewState(null)}
           onCompleted={(message, href) => {
             setReviewState(null);
@@ -453,7 +457,7 @@ export function ContractsView({
                         Buyer
                       </th>
                       <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
-                        Supplier
+                        Seller / direction
                       </th>
                       <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
                         Contract Date
@@ -492,10 +496,10 @@ export function ContractsView({
                           {item.company?.name ?? "—"}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {item.buyer?.legal_name ?? "—"}
+                          {partyName(item.parties, "buyer")}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {item.supplier?.legal_name ?? "—"}
+                          {partyName(item.parties, "seller")}<span className="block text-xs text-muted-foreground">{contractDirection(item.parties, companyFilter === "all" ? null : companyFilter)}</span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {formatDate(item.contract_date)}

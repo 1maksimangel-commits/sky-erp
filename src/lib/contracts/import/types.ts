@@ -7,6 +7,8 @@ import type {
 import type { ContractFormInput } from "@/lib/contracts/form-types";
 
 export type ContractImportRecord = {
+  company_id: string | null;
+  file_hash: string | null;
   id: string;
   file_path: string | null;
   file_name: string | null;

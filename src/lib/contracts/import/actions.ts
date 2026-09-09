@@ -1,11 +1,11 @@
 "use server";
 
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { isContractAiConfigured } from "@/lib/ai/contracts/client";
 import type { ContractExtractionResult } from "@/lib/ai/contracts/schema";
-import { createContract } from "@/lib/contracts/actions";
-import { addContractProductLine } from "@/lib/contracts/hub-actions";
+import { validateContractFormInput } from "@/lib/contracts/validation";
+import { asNumber, asString } from "@/lib/ai/contracts/schema";
 import { validateImportReview } from "@/lib/contracts/import/review-validation";
 import {
   asWarnings,
@@ -17,8 +17,6 @@ import type {
 } from "@/lib/contracts/import/types";
 import { createCounterparty } from "@/lib/counterparties/actions";
 import type { CounterpartyFormInput } from "@/lib/counterparties/types";
-import { uploadDocument } from "@/lib/documents/actions";
-import { recordEntityEvent } from "@/lib/platform/audit";
 import { assertCan } from "@/lib/platform/permissions";
 import { createProduct } from "@/lib/products/actions";
 import type { ProductFormInput } from "@/lib/products/types";
@@ -27,6 +25,18 @@ import { createClient } from "@/lib/supabase/server";
 export type ImportActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+export async function getContractOriginals(contractId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("contract_imports").select("id, file_path, file_name, mime_type, file_hash, created_at").eq("created_contract_id", contractId);
+  if (error) return { data: [], error: error.message };
+  const originals = await Promise.all((data ?? []).map(async row => {
+    if (!row.file_path) return { ...row, url: "", error: "Original Contract source path is missing." };
+    const { data: signed, error: signingError } = await supabase.storage.from("documents").createSignedUrl(row.file_path, 300);
+    return { ...row, url: signed?.signedUrl ?? "", error: signingError ? "Unable to authorize original Contract document." : null };
+  }));
+  return { data: originals.filter(source => source.url), error: originals.find(source => source.error)?.error ?? null };
+}
 
 export async function getContractImportAiStatus(): Promise<{
   configured: boolean;
@@ -214,7 +224,7 @@ export async function confirmContractImport(
   if (importRow.created_contract_id) {
     return {
       success: false,
-      error: "This import already created a contract.",
+      error: `This import already created a contract. Open /contracts/${importRow.created_contract_id}.`,
     };
   }
 
@@ -242,7 +252,7 @@ export async function confirmContractImport(
   }
 
   if (payload.saveAsDraft) {
-    await supabase
+    const { error: draftError } = await supabase
       .from("contract_imports")
       .update({
         status: "draft",
@@ -256,6 +266,7 @@ export async function confirmContractImport(
         ],
       })
       .eq("id", payload.importId);
+    if (draftError) return { success: false, error: draftError.message };
     return {
       success: true,
       data: {
@@ -265,201 +276,58 @@ export async function confirmContractImport(
     };
   }
 
-  const extractedContractNumber =
-    payload.form.contract_number.trim() ||
-    `IMPORT-DRAFT-${payload.importId.slice(0, 8).toUpperCase()}`;
-  const { data: numberConflict, error: numberLookupError } = await supabase
-    .from("contracts")
-    .select("id")
-    .eq("contract_number", extractedContractNumber)
-    .limit(1)
-    .maybeSingle();
-
-  if (numberLookupError) {
-    return { success: false, error: numberLookupError.message };
-  }
-
-  const contractNumber = numberConflict
-    ? `${extractedContractNumber}-DRAFT-${payload.importId.slice(0, 8).toUpperCase()}`
-    : extractedContractNumber;
+  const productLines = payload.form.product_lines ?? payload.productLines.filter(line => line.action !== "ignore").map(line => {
+    const extracted = extraction?.products[line.lineIndex];
+    return {
+      product_id: line.productId,
+      description: asString(extracted?.description) || asString(extracted?.product_name) || "",
+      quantity: line.quantity,
+      unit: asString(extracted?.quantity_unit) || "",
+      unit_price: asNumber(extracted?.unit_price) ?? 0,
+      currency: asString(extracted?.currency) || payload.form.currency,
+      net_weight: asNumber(extracted?.net_weight_kg),
+      gross_weight: asNumber(extracted?.gross_weight_kg),
+      agreed_amount: asNumber(extracted?.line_amount),
+      size_grade: asString(extracted?.size),
+      packing: asString(extracted?.packaging),
+      origin: asString(extracted?.country_of_origin),
+    };
+  });
   const form = {
     ...payload.form,
-    contract_number: contractNumber,
+    company_id: importRow.company_id,
     status: "Draft",
-    company_id: payload.matches.companyId,
-    buyer_id: payload.matches.buyerId,
-    supplier_id: payload.matches.supplierId,
+    business_role: null,
+    product_lines: productLines,
+    legal_snapshot: { ...payload.form.legal_snapshot, extraction, field_overrides: payload.fieldOverrides ?? {} },
+    payment_terms: payload.form.payment_terms ?? asString(extraction?.commercial.payment_terms),
+    delivery_place: payload.form.delivery_place ?? asString(extraction?.commercial.incoterms_location),
+    destination_port: payload.form.destination_port ?? asString(extraction?.logistics.port_of_discharge),
+    loading_port: payload.form.loading_port ?? asString(extraction?.logistics.port_of_loading),
   };
-
-  const created = await createContract(form, { workflow: "import-draft" });
-  if (!created.success || !created.id) {
-    return {
-      success: false,
-      error: created.success ? "Contract ID missing." : created.error,
-    };
+  if (payload.form.company_id !== importRow.company_id || payload.matches.companyId !== importRow.company_id) {
+    return { success: false, error: "Import belongs to a different workspace. Switch workspace and upload there." };
   }
-
-  const contractId = created.id;
-  let linkedProducts = 0;
-
-  try {
-    for (const line of payload.productLines) {
-      if (line.action === "ignore") continue;
-      if (line.action === "link" && !line.productId) continue;
-      if (line.action === "create" && !line.create?.name?.trim()) continue;
-
-      let productId = line.productId;
-      if (line.action === "create" && line.create) {
-        const createdProduct = await createProductFromImport({
-          sku: line.create.sku,
-          name: line.create.name,
-          scientificName: line.create.scientific_name,
-          size: line.create.size,
-          hsCode: line.create.hs_code,
-          brand: line.create.brand,
-          country: line.create.country,
-          currency: line.create.currency,
-          salePrice: line.create.sale_price,
-          description: line.create.description,
-        });
-        if (!createdProduct.success) {
-          throw new Error(
-            `Product line ${line.lineIndex + 1}: ${createdProduct.error}`
-          );
-        }
-        productId = createdProduct.data.id;
-      }
-
-      if (!productId) continue;
-
-      const lineResult = await addContractProductLine(contractId, {
-        product_id: productId,
-        quantity: line.quantity || 0,
-      });
-      if (!lineResult.success) {
-        throw new Error(
-          `Product line ${line.lineIndex + 1}: ${lineResult.error}`
-        );
-      }
-      linkedProducts += 1;
-    }
-
-    if (importRow.file_path && importRow.file_name) {
-      const { data: fileBlob, error: downloadError } = await supabase.storage
-        .from("documents")
-        .download(importRow.file_path);
-      if (downloadError || !fileBlob) {
-        throw new Error(
-          downloadError?.message ?? "Failed to attach original PDF."
-        );
-      }
-
-      const file = new File([fileBlob], importRow.file_name, {
-        type: "application/pdf",
-      });
-      const formData = new FormData();
-      formData.set("file", file);
-      formData.set(
-        "title",
-        payload.form.title || payload.form.contract_number || importRow.file_name
-      );
-      formData.set("document_type", "contract");
-      formData.set("version", "1");
-
-      const uploadResult = await uploadDocument({
-        entityType: "contract",
-        entityId: contractId,
-        contractId,
-        documentType: "contract",
-        title:
-          payload.form.title ||
-          payload.form.contract_number ||
-          importRow.file_name,
-        version: 1,
-        formData,
-      });
-
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error);
-      }
-    }
-
-    await recordEntityEvent({
-      entityType: "contract",
-      entityId: contractId,
-      action: "imported",
-      eventType: "contract_imported_from_pdf",
-      title: "Contract imported from PDF",
-      summary: `Contract ${contractNumber} imported from PDF`,
-      oldValue: {
-        extraction: extraction,
-      },
-      newValue: {
-        reviewed_form: form,
-        field_overrides: payload.fieldOverrides ?? {},
-        product_lines: payload.productLines,
-        warnings: warnings.map((item) => item.message),
-      },
-      notify: {
-        title: "Contract imported from PDF",
-        body: contractNumber,
-        category: "contract",
-        href: `/contracts/${contractId}`,
-      },
-    });
-
-    await supabase
-      .from("contract_imports")
-      .update({
-        status: "confirmed",
-        created_contract_id: contractId,
-        warnings: [
-          ...asWarnings(importRow.warnings),
-          ...warnings.map((item) => item.message),
-        ],
-        error_message: null,
-      })
-      .eq("id", payload.importId);
-
-    revalidatePath("/contracts");
-    revalidatePath("/documents");
-    revalidatePath(`/contracts/${contractId}`);
-    revalidatePath(`/contracts/${contractId}/documents`);
-
-    return {
-      success: true,
-      data: {
-        contractId,
-        message: `Contract created successfully${
-          linkedProducts > 0
-            ? ` with ${linkedProducts} product line${linkedProducts === 1 ? "" : "s"}`
-            : ""
-        }. Original PDF linked.`,
-        href: `/contracts/${contractId}`,
-      },
-    };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Confirm failed.";
-    // Contract row may already exist — keep the link and mark confirmed with error
-    // so retries are blocked and the operator can open the contract.
-    await supabase
-      .from("contract_imports")
-      .update({
-        status: "confirmed",
-        error_message: `Partial finalization: ${message}`,
-        created_contract_id: contractId,
-        warnings: [
-          ...asWarnings(importRow.warnings),
-          ...warnings.map((item) => item.message),
-          message,
-        ],
-      })
-      .eq("id", payload.importId);
-
-    return {
-      success: false,
-      error: `Contract was created (${contractId}), but finalization failed: ${message}`,
-    };
+  const validation = validateContractFormInput(form);
+  if (validation) return { success: false, error: validation };
+  const { data: duplicate, error: lookupError } = await supabase.from("contracts").select("id").eq("contract_number", form.contract_number.trim()).maybeSingle();
+  if (lookupError) return { success: false, error: lookupError.message };
+  if (duplicate) return { success: false, error: `Contract number already exists. Open /contracts/${duplicate.id} to review the existing Contract.` };
+  // Upgrade only this explicitly reviewed legacy import's source identity.
+  // Read the retained bytes; never fabricate a hash or replace the original.
+  if (!importRow.file_hash && importRow.file_path) {
+    const { data: original, error: sourceError } = await supabase.storage.from("documents").download(importRow.file_path);
+    if (sourceError || !original) return { success: false, error: "Retained original is unavailable. Confirmation was not applied." };
+    const hash = createHash("sha256").update(Buffer.from(await original.arrayBuffer())).digest("hex");
+    const { error: hashError } = await supabase.from("contract_imports").update({ file_hash: hash }).eq("id", payload.importId).is("file_hash", null);
+    if (hashError) return { success: false, error: "Original is already registered or its identity could not be verified." };
   }
+  const { data: contractId, error } = await supabase.rpc("save_contract", {
+    p_id: null, p_contract: form, p_parties: form.parties ?? [], p_lines: productLines,
+    p_import_id: payload.importId, p_review: { ...payload, form, reviewedWarnings: warnings },
+  });
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/contracts");
+  revalidatePath(`/contracts/${contractId}`);
+  return { success: true, data: { contractId: String(contractId), message: "Reviewed Draft Contract created. Original source retained.", href: `/contracts/${contractId}` } };
 }

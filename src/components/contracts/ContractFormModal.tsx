@@ -1,8 +1,8 @@
 "use client";
+import { ContractPartyFields, ContractLineFields } from "@/components/contracts/ContractLegalFields";
 
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   ContractDocumentsAttachSection,
   type PendingContractDocument,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/contracts/form-types";
 import { validateContractFormInput } from "@/lib/contracts/validation";
 import type { Company } from "@/lib/companies";
+import type { Product } from "@/lib/products";
 import type { Counterparty } from "@/lib/counterparties";
 import {
   listLinkedDocuments,
@@ -32,6 +33,7 @@ import { validateContractAttachFile } from "@/lib/documents/validation";
 type BusinessCaseOption = { id: string; case_number: string; title: string | null };
 
 type ContractFormModalProps = {
+  products?: Product[];
   open: boolean;
   contract?: Contract | null;
   onClose: () => void;
@@ -44,6 +46,14 @@ type ContractFormModalProps = {
 };
 
 type FormState = {
+  parties: NonNullable<ContractFormInput["parties"]>;
+  product_lines: NonNullable<ContractFormInput["product_lines"]>;
+  legal_snapshot: Record<string, unknown>;
+  payment_terms: string;
+  delivery_place: string;
+  loading_port: string;
+  destination_port: string;
+  expected_shipment_date: string;
   contract_number: string;
   title: string;
   company_id: string;
@@ -78,6 +88,14 @@ const sectionClassName =
 
 function toFormState(values: ContractFormInput): FormState {
   return {
+    parties: values.parties ?? [],
+    product_lines: values.product_lines ?? [],
+    legal_snapshot: values.legal_snapshot ?? {},
+    payment_terms: values.payment_terms ?? "",
+    delivery_place: values.delivery_place ?? "",
+    loading_port: values.loading_port ?? "",
+    destination_port: values.destination_port ?? "",
+    expected_shipment_date: values.expected_shipment_date ?? "",
     contract_number: values.contract_number,
     title: values.title ?? "",
     company_id: values.company_id ?? "",
@@ -101,15 +119,23 @@ function toFormInput(form: FormState): ContractFormInput {
   const parsedAmount = amount ? Number(amount) : null;
 
   return {
+    parties: form.parties,
+    product_lines: form.product_lines,
+    legal_snapshot: form.legal_snapshot,
+    payment_terms: form.payment_terms || null,
+    delivery_place: form.delivery_place || null,
+    loading_port: form.loading_port || null,
+    destination_port: form.destination_port || null,
+    expected_shipment_date: form.expected_shipment_date || null,
     contract_number: form.contract_number.trim(),
     title: form.title.trim() || null,
     company_id: form.company_id,
     buyer_id: form.buyer_id,
     supplier_id: form.supplier_id,
     consignee_id: form.consignee_id,
-    business_case_id: form.business_case_id.trim() || null,
+    business_case_id: form.deal_id.trim() || form.business_case_id.trim() || null,
     deal_id: form.deal_id.trim() || null,
-    business_role: form.business_role.trim() || null,
+    business_role: null,
     currency: form.currency.trim() || "USD",
     amount:
       parsedAmount != null && Number.isFinite(parsedAmount) ? parsedAmount : null,
@@ -193,26 +219,6 @@ function mergeSelectedCompany(
   ];
 }
 
-function mergeSelectedCounterparty(
-  counterparties: Counterparty[],
-  relation: { id: string; legal_name: string } | null | undefined
-): Array<{ id: string; legal_name: string }> {
-  const options = counterparties.map((item) => ({
-    id: item.id,
-    legal_name: item.legal_name,
-  }));
-
-  if (!relation) {
-    return options;
-  }
-
-  if (options.some((item) => item.id === relation.id)) {
-    return options;
-  }
-
-  return [{ id: relation.id, legal_name: relation.legal_name }, ...options];
-}
-
 function buildSuccessMessage(input: {
   isEditing: boolean;
   uploadedCount: number;
@@ -244,6 +250,7 @@ export function ContractFormModal({
   onClose,
   onSaved,
   companies,
+  products = [],
   counterparties,
   businessCases = [],
   defaultBusinessCaseId = null,
@@ -268,14 +275,6 @@ export function ContractFormModal({
   const submittingRef = useRef(false);
 
   const companyOptions = mergeSelectedCompany(companies, contract);
-  const buyerOptions = mergeSelectedCounterparty(
-    counterparties,
-    contract?.buyer
-  );
-  const consigneeOptions = mergeSelectedCounterparty(
-    counterparties,
-    contract?.consignee
-  );
 
   useResetWhenOpened(open, () => {
     const next = toFormState(
@@ -283,6 +282,7 @@ export function ContractFormModal({
     );
     if (!contract && defaultBusinessCaseId?.trim()) {
       next.business_case_id = defaultBusinessCaseId.trim();
+      next.deal_id = defaultBusinessCaseId.trim();
     }
     setForm(next);
     setPendingDocs([]);
@@ -623,7 +623,7 @@ export function ContractFormModal({
                   className={inputClassName}
                 />
               </Field>
-              <Field label="Seller" required>
+              <Field label="Owning workspace" required>
                 <select
                   value={form.company_id}
                   onChange={(e) => updateField("company_id", e.target.value)}
@@ -641,7 +641,7 @@ export function ContractFormModal({
                 <select
                   value={form.business_case_id}
                   onChange={(e) =>
-                    updateField("business_case_id", e.target.value)
+                    setForm(current => ({ ...current, business_case_id: e.target.value, deal_id: e.target.value }))
                   }
                   className={inputClassName}
                 >
@@ -654,44 +654,13 @@ export function ContractFormModal({
                   ))}
                 </select>
               </Field>
-              <Field label="Business role">
-                <select value={form.business_role} onChange={(e) => updateField("business_role", e.target.value)} className={inputClassName}>
-                  <option value="">Not specified</option>
-                  {(["Purchase", "Sale", "Commission", "Logistics", "Other"] as const).map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
-              </Field>
-              <Field label="Buyer" required>
-                <select
-                  value={form.buyer_id}
-                  onChange={(e) => updateField("buyer_id", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">{buyerOptions.length ? "Select buyer" : "No buyers available"}</option>
-                  {buyerOptions.map((counterparty) => (
-                    <option key={counterparty.id} value={counterparty.id}>
-                      {counterparty.legal_name}
-                    </option>
-                  ))}
-                </select>
-                {!buyerOptions.length ? <Link href="/counterparties?new=1" className="mt-1 inline-block text-xs text-sky-300 hover:underline">Create buyer in Counterparties</Link> : null}
-              </Field>
-              <Field label="Consignee / грузополучатель">
-                <select
-                  value={form.consignee_id}
-                  onChange={(e) => updateField("consignee_id", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select consignee</option>
-                  {consigneeOptions.map((counterparty) => (
-                    <option key={counterparty.id} value={counterparty.id}>
-                      {counterparty.legal_name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
             </Section>
+            <ContractPartyFields value={form.parties} onChange={parties => updateField("parties", parties)} companies={companies} counterparties={counterparties} />
+            <ContractLineFields value={form.product_lines} onChange={lines => updateField("product_lines", lines)} currency={form.currency} products={products} />
 
             <Section title="Commercial">
+              {(["payment_terms", "delivery_place", "loading_port", "destination_port", "expected_shipment_date"] as const).map(field => <Field key={field} label={field.replaceAll("_", " ")}><input className={inputClassName} type={field.endsWith("date") ? "date" : "text"} value={form[field]} onChange={event => updateField(field, event.target.value)} /></Field>)}
+              <Field label="Commercial notes"><textarea className={inputClassName} value={typeof form.legal_snapshot.notes === "string" ? form.legal_snapshot.notes : ""} onChange={event => updateField("legal_snapshot", { ...form.legal_snapshot, notes: event.target.value })} /></Field>
               <Field label="Currency">
                 <select
                   value={form.currency}

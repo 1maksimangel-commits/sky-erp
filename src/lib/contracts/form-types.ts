@@ -1,6 +1,15 @@
 import type { Contract } from "@/lib/contracts/db";
+import type { ContractPartyInput, ContractLineInput } from "@/lib/contracts/parties";
 
 export type ContractFormInput = {
+  parties?: ContractPartyInput[];
+  product_lines?: ContractLineInput[];
+  legal_snapshot?: Record<string, unknown>;
+  payment_terms?: string | null;
+  delivery_place?: string | null;
+  destination_port?: string | null;
+  loading_port?: string | null;
+  expected_shipment_date?: string | null;
   contract_number: string;
   title: string | null;
   company_id: string | null;
@@ -19,6 +28,8 @@ export type ContractFormInput = {
 };
 
 export const emptyContractForm = (): ContractFormInput => ({
+  parties: [],
+  product_lines: [],
   contract_number: "",
   title: null,
   company_id: null,
@@ -45,9 +56,17 @@ export const CONTRACT_STATUSES = [
 
 export function contractToFormInput(contract: Contract): ContractFormInput {
   return {
+    parties: contract.parties,
+    product_lines: contract.product_lines,
+    legal_snapshot: contract.legal_snapshot,
+    payment_terms: contract.payment_terms,
+    delivery_place: contract.delivery_place,
+    destination_port: contract.destination_port,
+    loading_port: contract.loading_port,
+    expected_shipment_date: contract.expected_shipment_date,
     contract_number: contract.contract_number,
     title: contract.title,
-    company_id: contract.company?.id ?? null,
+    company_id: contract.company_id,
     buyer_id: contract.buyer?.id ?? null,
     supplier_id: contract.supplier?.id ?? null,
     consignee_id: contract.consignee?.id ?? null,

@@ -9,8 +9,8 @@ import {
 import type { ContractImportRecord } from "@/lib/contracts/import/types";
 
 const PROCESS_STAGES = [
-  "Uploading PDF",
-  "Sending PDF to AI",
+  "Uploading source",
+  "Extracting Contract data",
   "Extracting contract fields",
   "Matching companies and counterparties",
   "Matching products",
@@ -96,12 +96,13 @@ function ContractPdfImportWizardInner({
     const mime = next.type.toLowerCase();
     const pdf =
       mime === "application/pdf" || next.name.toLowerCase().endsWith(".pdf");
-    if (!pdf) {
-      setError("Only PDF files are allowed.");
+    const docx = next.name.toLowerCase().endsWith(".docx");
+    if (!pdf && !docx) {
+      setError("Only PDF and DOCX files are allowed.");
       setFile(null);
       return;
     }
-    if (mime && mime !== "application/pdf" && mime !== "application/octet-stream") {
+    if (mime && mime !== "application/pdf" && mime !== "application/octet-stream" && mime !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       setError(`Invalid MIME type "${mime}". Expected application/pdf.`);
       setFile(null);
       return;
@@ -130,7 +131,7 @@ function ContractPdfImportWizardInner({
     setError(null);
     setStageIndex(0);
     setProgress(2);
-    setStatusMessage("Uploading PDF");
+    setStatusMessage("Uploading source");
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -149,7 +150,7 @@ function ContractPdfImportWizardInner({
           setProgress(Math.max(2, Math.round(percent * 0.18)));
           setStageIndex(0);
           setStatusMessage(
-            percent < 100 ? `Uploading PDF (${percent}%)` : "Uploading PDF"
+            percent < 100 ? `Uploading source (${percent}%)` : "Uploading source"
           );
         },
         onEvent: (event) => {
@@ -233,10 +234,10 @@ function ContractPdfImportWizardInner({
         <div className="flex items-start justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-foreground">
-              Import from PDF
+              Import PDF / DOCX
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Send the PDF to OpenAI, then review before creating the contract.
+              Extract Contract data with OpenAI, then review before creating the Contract.
             </p>
           </div>
           <button
@@ -300,22 +301,22 @@ function ContractPdfImportWizardInner({
             >
               <FileUp className="mx-auto h-5 w-5 text-muted-foreground" />
               <p className="mt-2 text-sm text-foreground">
-                Drag and drop a contract PDF
+                Drag and drop a Contract PDF or DOCX
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                PDF only · max 50 MB
+                PDF / DOCX · max 50 MB
               </p>
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
                 className="mt-3 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium"
               >
-                Select PDF
+                Select source
               </button>
               <input
                 ref={inputRef}
                 type="file"
-                accept="application/pdf,.pdf"
+                accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                 className="hidden"
                 onChange={(e) => assignFile(e.target.files?.[0] ?? null)}
               />

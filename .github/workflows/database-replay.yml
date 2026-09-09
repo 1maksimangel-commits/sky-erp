@@ -28,6 +28,7 @@ jobs:
           version: 2.115.0
       - run: pnpm db:test
       - run: pnpm auth:test
+      - run: pnpm contracts:test
       - run: pnpm db:check
       - run: pnpm db:replay
       - run: pnpm exec tsc --noEmit

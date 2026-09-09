@@ -6,7 +6,7 @@ as $$ select md5('sky-auth-fixture-' || tag || '-' || entity)::uuid $$;
 create function pg_temp.assert_true(ok boolean, message text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'Auth/RLS assertion: %', message; end if; end $$;
 create temporary table private_tables(name text primary key);
-insert into private_tables values ('counterparties'),('products'),('business_cases'),('contracts'),('shipments'),('invoices'),('payments'),('accounts'),('bank_accounts'),('bank_transactions'),('expenses'),('contract_products'),('shipment_timeline_events'),('warehouse_locations'),('inventory'),('inventory_lots'),('stock_movements'),('warehouse_transfers'),('inventory_reservations'),('invoice_items'),('payment_allocations'),('documents'),('document_versions'),('contract_imports'),('contract_import_field_reviews'),('crm_customers'),('crm_contacts'),('crm_notes'),('crm_communications'),('crm_tasks'),('crm_timeline_events'),('crm_attachments'),('deal_participants'),('deal_products'),('deal_commission_links'),('document_templates'),('generated_documents'),('template_mappings'),('document_generation_batches'),('notifications'),('timeline_events'),('activity_log');
+insert into private_tables values ('counterparties'),('products'),('business_cases'),('contracts'),('shipments'),('invoices'),('payments'),('accounts'),('bank_accounts'),('bank_transactions'),('expenses'),('contract_products'),('contract_parties'),('shipment_timeline_events'),('warehouse_locations'),('inventory'),('inventory_lots'),('stock_movements'),('warehouse_transfers'),('inventory_reservations'),('invoice_items'),('payment_allocations'),('documents'),('document_versions'),('contract_imports'),('contract_import_field_reviews'),('crm_customers'),('crm_contacts'),('crm_notes'),('crm_communications'),('crm_tasks'),('crm_timeline_events'),('crm_attachments'),('deal_participants'),('deal_products'),('deal_commission_links'),('document_templates'),('generated_documents'),('template_mappings'),('document_generation_batches'),('notifications'),('timeline_events'),('activity_log');
 grant select on private_tables to authenticated, anon;
 
 -- Fail when a future table is added without a fixture and an explicit classification.
@@ -83,6 +83,14 @@ begin
   delete from public.contracts where id=pg_temp.fixture_id(tag,'contracts');
   perform pg_temp.assert_true(found,'Own DELETE contracts');
   insert into public.contracts(id,company_id,contract_number) values (pg_temp.fixture_id(tag,'contracts'),company,'Fictional-' || tag || '-contract_number');
+  insert into public.contract_parties(id,company_id,contract_id,role_code,internal_company_id,snapshot)
+  values(pg_temp.fixture_id(tag,'contract_parties'),company,pg_temp.fixture_id(tag,'contracts'),'consignee',company,'{"legal_name":"Fictional party"}');
+  update public.contract_parties set id=id where id=pg_temp.fixture_id(tag,'contract_parties');
+  perform pg_temp.assert_true(found,'Own UPDATE contract_parties');
+  delete from public.contract_parties where id=pg_temp.fixture_id(tag,'contract_parties');
+  perform pg_temp.assert_true(found,'Own DELETE contract_parties');
+  insert into public.contract_parties(id,company_id,contract_id,role_code,internal_company_id,snapshot)
+  values(pg_temp.fixture_id(tag,'contract_parties'),company,pg_temp.fixture_id(tag,'contracts'),'consignee',company,'{"legal_name":"Fictional party"}');
   insert into public.shipments(id,company_id,contract_id) values (pg_temp.fixture_id(tag,'shipments'),company,pg_temp.fixture_id(tag,'contracts'));
   update public.shipments set id=id where id=pg_temp.fixture_id(tag,'shipments');
   perform pg_temp.assert_true(found,'Own UPDATE shipments');

@@ -1,5 +1,15 @@
 # Module — Contracts
 
+## Phase 4 canonical behavior
+
+See [Contracts stabilization](../Development/ContractsStabilization.md) for the
+current explicit legal-party model, workspace/party access, legal snapshots,
+atomic PDF/DOCX review confirmation, immutable originals and regression gate.
+The sections below describe the earlier implementation and are historical
+context where they conflict with that Phase 4 document. In particular, company
+ownership no longer implies Seller, confirmation no longer performs a sequence
+of partial writes, and source paths are company-scoped.
+
 ## Purpose
 
 Commercial hub for SKY ERP, including AI PDF import with human review.

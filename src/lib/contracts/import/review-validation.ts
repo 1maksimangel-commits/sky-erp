@@ -40,7 +40,7 @@ export function validateImportReview(input: {
     supplier_id: input.payload.matches.supplierId,
     status: "Draft",
   }, {
-    allowIncompleteDraft: true,
+    allowIncompleteDraft: input.payload.saveAsDraft === true,
   });
   if (formError) {
     errors.push({ level: "error", code: "form", message: formError });
@@ -53,30 +53,8 @@ export function validateImportReview(input: {
       message: "Internal company was not selected and can be completed later.",
     });
   }
-  if (!input.payload.matches.buyerId) {
-    warnings.push({
-      level: "warning",
-      code: "buyer",
-      message: "Buyer was not selected and can be completed later.",
-    });
-  }
-  if (!input.payload.matches.supplierId) {
-    warnings.push({
-      level: "warning",
-      code: "supplier",
-      message: "Supplier was not selected and can be completed later.",
-    });
-  }
-  if (
-    input.payload.matches.buyerId &&
-    input.payload.matches.supplierId &&
-    input.payload.matches.buyerId === input.payload.matches.supplierId
-  ) {
-    errors.push({
-      level: "error",
-      code: "buyer_supplier",
-      message: "Buyer and supplier cannot be the same.",
-    });
+  for (const role of ["seller", "buyer"]) {
+    if (!(form.parties ?? []).some(p => p.role_code === role)) warnings.push({ level: "warning", code: role, message: `Select the explicit ${role} legal entity before confirmation.` });
   }
 
   if (form.amount != null && form.amount < 0) {
@@ -136,7 +114,7 @@ export function validateImportReview(input: {
       });
     }
 
-    const lineTotal = extraction.products.reduce((sum, line) => {
+    const lineTotal = form.product_lines ? form.product_lines.filter(line => line.currency === form.currency).reduce((sum,line) => sum + line.quantity * line.unit_price, 0) : extraction.products.reduce((sum, line) => {
       const amount = asNumber(line.line_amount);
       if (amount != null) return sum + amount;
       const unit = asNumber(line.unit_price);
@@ -164,14 +142,14 @@ export function validateImportReview(input: {
         message: "Missing seller signature.",
       });
     }
-    if (!asString(extraction.commercial.payment_terms)) {
+    if (!form.payment_terms && !asString(extraction.commercial.payment_terms)) {
       warnings.push({
         level: "warning",
         code: "payment_terms",
         message: "Missing payment terms.",
       });
     }
-    if (!asString(extraction.commercial.delivery_deadline)) {
+    if (!form.delivery_place && !asString(extraction.commercial.delivery_deadline)) {
       warnings.push({
         level: "warning",
         code: "delivery_terms",

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ContractWorkspaceShell } from "@/components/contracts/ContractWorkspaceShell";
 import { getContractById, getRelatedContracts } from "@/lib/contracts/db";
+import { getAccessContext } from "@/lib/platform/permissions";
 
 export default async function ContractWorkspaceLayout({
   children,
@@ -17,5 +18,6 @@ export default async function ContractWorkspaceLayout({
   }
 
   const relatedContracts = await getRelatedContracts(contract.deal_id, contract.id);
-  return <ContractWorkspaceShell contract={contract} relatedContracts={relatedContracts}>{children}</ContractWorkspaceShell>;
+  const context = await getAccessContext();
+  return <ContractWorkspaceShell contract={contract} relatedContracts={relatedContracts} selectedCompanyId={context?.companyId}>{children}</ContractWorkspaceShell>;
 }

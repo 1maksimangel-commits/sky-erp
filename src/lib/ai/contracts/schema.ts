@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const ExtractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
-  confidence: z.number(),
+  confidence: z.number().min(0).max(1),
   source_text: z.string().nullable(),
   page_number: z.number().nullable(),
   warning: z.string().nullable(),
@@ -64,7 +64,16 @@ const ProductLineSchema = z.object({
   glaze_percent: ExtractedFieldSchema,
 });
 
+const LegalPartyExtractionSchema = z.object({
+  legal_name: ExtractedFieldSchema, address: ExtractedFieldSchema,
+  registration_number: ExtractedFieldSchema, tax_id: ExtractedFieldSchema,
+  bank_details: ExtractedFieldSchema,
+});
+
 export const ContractExtractionZodSchema = z.object({
+  seller: LegalPartyExtractionSchema,
+  payer: LegalPartyExtractionSchema,
+  beneficiary: LegalPartyExtractionSchema,
   general: z.object({
     contract_number: ExtractedFieldSchema,
     title: ExtractedFieldSchema,
@@ -81,6 +90,7 @@ export const ContractExtractionZodSchema = z.object({
     company_address: ExtractedFieldSchema,
   }),
   buyer: z.object({
+    buyer_bank_details: ExtractedFieldSchema,
     buyer_legal_name: ExtractedFieldSchema,
     buyer_short_name: ExtractedFieldSchema,
     buyer_registration_number: ExtractedFieldSchema,

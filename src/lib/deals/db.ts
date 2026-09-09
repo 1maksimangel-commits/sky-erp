@@ -125,7 +125,8 @@ async function loadContracts(dealId: string): Promise<{ data: DealContract[]; wa
   const supabase = await createClient();
   const canonical = await supabase
     .from("contracts")
-    .select("id, contract_number, title, status, amount, currency, business_role, deal_id, deal_contract_role, parent_contract_id")
+    .select("id, contract_number, title, status, amount, currency, business_role, deal_id, deal_contract_role, parent_contract_id, parties_reviewed, parties:contract_parties(role_code,internal_company_id,counterparty_id,snapshot)")
+    .is("deleted_at", null)
     .or(`deal_id.eq.${dealId},business_case_id.eq.${dealId}`)
     .order("created_at");
   const result = canonical.error && isMissingCanonicalSchema(canonical.error.message)
@@ -139,6 +140,8 @@ async function loadContracts(dealId: string): Promise<{ data: DealContract[]; wa
   return {
     data: (result.data ?? []).map((row) => ({
       id: row.id,
+      parties_reviewed: "parties_reviewed" in row && row.parties_reviewed === true,
+      parties: "parties" in row && Array.isArray(row.parties) ? row.parties : [],
       contract_number: row.contract_number,
       title: row.title,
       status: row.status,
