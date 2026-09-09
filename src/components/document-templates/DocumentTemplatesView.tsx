@@ -1,66 +1,82 @@
 "use client";
 
-import { Download, Star, Trash2, Upload } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { createTextDocumentTemplate, deleteDocumentTemplate, setDefaultDocumentTemplate, setDocumentTemplateActive, uploadDocumentTemplate } from "@/lib/document-templates/actions";
-import { DOCUMENT_TEMPLATE_LABELS, DOCUMENT_TEMPLATE_TYPES, TEMPLATE_VARIABLES, type DocumentTemplate, type DocumentTemplateType } from "@/lib/document-templates/types";
-import { TemplateEditor } from "@/components/document-templates/TemplateEditor";
-import { createGeneratedDocument, type GeneratedDocumentState } from "@/lib/document-templates/generated";
-import type { BusinessCase } from "@/lib/business-cases";
+import { useRef, useState, useTransition } from "react";
+import { setDefaultDocumentTemplate, setDocumentTemplateActive, uploadDocumentTemplate } from "@/lib/document-templates/actions";
+import { DOCUMENT_TEMPLATE_LABELS, DOCUMENT_TEMPLATE_TYPES, type DocumentTemplate, type DocumentTemplateType } from "@/lib/document-templates/types";
+import type { Company } from "@/lib/companies";
 import { TemplateConfigureDialog } from "@/components/document-templates/TemplateConfigureDialog";
 import { TemplateTestGenerateButton } from "@/components/document-templates/TemplateTestGenerateButton";
 
-export function DocumentTemplatesView({ templates, deals, error }: { templates: DocumentTemplate[]; deals: BusinessCase[]; error: string | null }) {
+const fieldClass = "mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
+const buttonClass = "rounded-md border border-border px-3 py-2 text-xs disabled:opacity-50";
+function label(type: DocumentTemplateType) { return type === "invoice" ? "Commercial Invoice" : DOCUMENT_TEMPLATE_LABELS[type]; }
+
+export function DocumentTemplatesView({ templates, companies, error }: { templates: DocumentTemplate[]; companies: Company[]; error: string | null }) {
   const router = useRouter();
+  const uploadRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const [type, setType] = useState<DocumentTemplateType>("contract");
   const [name, setName] = useState("");
   const [language, setLanguage] = useState("en");
-  const [makeDefault, setMakeDefault] = useState(true);
+  const [companyId, setCompanyId] = useState("");
+  const [makeDefault, setMakeDefault] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [content, setContent] = useState("Contract {{contract.number}}\n\nSeller: {{seller.name}}\nBuyer: {{buyer.name}}\nConsignee: {{consignee.name}}\n\nProducts:\n{{product.name}} — {{product.quantity}}\n\nPrice: {{commercial.price}} {{commercial.currency}}\nIncoterms: {{incoterms}}\n\n{{manual.notes}}");
+  const [replacement, setReplacement] = useState<DocumentTemplate | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [selectedDealId, setSelectedDealId] = useState("");
-  const [generated, setGenerated] = useState<GeneratedDocumentState | null>(null);
-  const selectedTemplate = templates.find((item) => item.id === selectedTemplateId) ?? templates.find((item) => item.document_type === type && item.is_default);
-  const selectedDeal = deals.find((item) => item.id === selectedDealId);
-  function createDocument() {
-    if (!selectedTemplate || !selectedDeal) { setMessage("Select a template and Deal first."); return; }
-    const canonical = { deal: { number: selectedDeal.case_number, title: selectedDeal.title }, contract: { number: selectedDeal.contract_number, currency: selectedDeal.currency, amount: selectedDeal.contract_amount, incoterms: selectedDeal.incoterms }, seller: selectedDeal.company, buyer: selectedDeal.buyer, supplier: selectedDeal.supplier, consignee: selectedDeal.consignee, products: selectedDeal.products ?? [] };
-    const draft = createGeneratedDocument({ template: selectedTemplate.template_content ?? "<h1>{{contract.number}}</h1><p>Seller: {{seller.name}}</p><p>Buyer: {{buyer.legal_name}}</p>", templateVersion: selectedTemplate.version, canonical, overrides: {}, status: "Draft", generatedBy: null, supersedesId: null });
-    setGenerated(draft); setMessage("Draft document generated from canonical Deal data.");
+  function action(fn: () => Promise<{ success: boolean; error?: string }>) {
+    startTransition(async () => {
+      try { const result = await fn(); setMessage(result.success ? "Saved." : result.error ?? "Operation failed."); if (result.success) router.refresh(); }
+      catch (failure) { setMessage(failure instanceof Error ? failure.message : "Operation failed."); }
+    });
+  }
+  function chooseUpload(kind: DocumentTemplateType, previous?: DocumentTemplate) {
+    setType(kind); setReplacement(previous ?? null); setName(previous?.name ?? "");
+    setLanguage(previous?.language ?? "en"); setCompanyId(previous?.company_id ?? "");
+    setMakeDefault(previous?.is_default ?? false); setFile(null);
+    uploadRef.current?.reset(); uploadRef.current?.scrollIntoView({ behavior: "smooth" });
   }
   function submit() {
-    if (!file) { setMessage("Choose a DOCX file first."); return; }
+    if (!file || !name.trim()) { setMessage("Enter a template name and choose a DOCX file."); return; }
     startTransition(async () => {
-      const formData = new FormData();
-      formData.set("documentType", type); formData.set("name", name); formData.set("language", language);
-      formData.set("isDefault", String(makeDefault || templates.every((item) => item.document_type !== type))); formData.set("file", file);
-      const result = await uploadDocumentTemplate(formData);
-      setMessage(result.success ? "Template created." : result.error);
-      if (result.success) { setFile(null); setName(""); router.refresh(); }
+      try {
+        const form = new FormData();
+        form.set("documentType", type); form.set("name", name); form.set("language", language);
+        form.set("companyId", companyId); form.set("isDefault", String(makeDefault)); form.set("file", file);
+        if (replacement) form.set("replacesId", replacement.id);
+        const result = await uploadDocumentTemplate(form);
+        setMessage(result.success ? "Template uploaded. Known fields are configured automatically; custom fields can be configured under Advanced." : result.error);
+        if (result.success) { setFile(null); setName(""); setReplacement(null); uploadRef.current?.reset(); router.refresh(); }
+      } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Upload failed."); }
     });
   }
-  function submitText() {
-    startTransition(async () => {
-      const result = await createTextDocumentTemplate({ documentType: type, name: name || `${DOCUMENT_TEMPLATE_LABELS[type]} master`, language, content, isDefault: makeDefault });
-      setMessage(result.success ? "Template created." : result.error);
-      if (result.success) { setName(""); router.refresh(); }
-    });
-  }
-  function action(fn: () => Promise<{ success: boolean; error?: string }>) {
-    startTransition(async () => { const result = await fn(); setMessage(result.success ? "Saved." : result.error ?? "Operation failed."); if (result.success) router.refresh(); });
-  }
-  return <div className="space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">Document Templates</h1><p className="mt-1 text-sm text-muted-foreground">Store reusable DOCX templates in Supabase Storage. Repository files are not used.</p></div><button type="button" onClick={() => document.getElementById("create-document-template")?.scrollIntoView({ behavior: "smooth" })} className="inline-flex items-center gap-2 rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background"><Upload className="h-4 w-4" />Create template</button></div>
-    {error ? <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
-    <section className="grid gap-4 md:grid-cols-3">{(["contract", "supplement", "invoice"] as const).map((kind) => { const template = templates.find((item) => item.document_type === kind && item.is_active) ?? null; return <div key={`primary-${kind}`} className="rounded-xl border border-border bg-card p-4"><h2 className="font-semibold">{kind === "invoice" ? "COMMERCIAL INVOICE" : kind.toUpperCase()}</h2><p className="mt-2 text-sm">{template?.name ?? "No template uploaded"}</p><p className="text-xs text-muted-foreground">Status: {template ? template.status : "Unconfigured"}</p>{template ? <div className="mt-3 flex flex-wrap gap-2"><TemplateConfigureDialog template={template} /><TemplateTestGenerateButton template={template} /><a href={`/api/document-templates/${template.id}/download`} className="rounded-md border border-border px-2 py-1 text-xs">Download Original</a></div> : <button type="button" onClick={() => document.getElementById("upload-template")?.scrollIntoView({ behavior: "smooth" })} className="mt-3 rounded-md bg-foreground px-2 py-1 text-xs text-background">Upload DOCX</button>}</div>; })}</section>
-    {templates.length ? <section className="rounded-xl border border-border bg-card p-4"><h2 className="text-sm font-medium">Uploaded templates</h2><div className="mt-3 flex flex-wrap gap-2">{templates.map((item, index) => <div key={`${item.id}-${index}`} className="flex items-center gap-2 rounded border border-border px-2 py-1 text-xs"><span>{item.name} · {item.status ?? (item.template_content ? "Ready" : "Unconfigured")}</span><TemplateConfigureDialog template={item} /></div>)}</div></section> : null}
-    <section className="rounded-xl border border-border bg-card p-4"><h2 className="text-sm font-medium">Create Document</h2><p className="mt-1 text-xs text-muted-foreground">Select a template and canonical Deal to generate a Draft preview.</p><div className="mt-3 grid gap-3 md:grid-cols-2"><select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} className="rounded-md border border-border bg-background px-3 py-2 text-sm"><option value="">Select template</option>{templates.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select><select value={selectedDealId} onChange={(event) => setSelectedDealId(event.target.value)} className="rounded-md border border-border bg-background px-3 py-2 text-sm"><option value="">Select Deal</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.case_number} · {deal.title ?? "Untitled"}</option>)}</select></div><button type="button" onClick={createDocument} className="mt-3 rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background">Generate Draft</button>{generated ? <div className="mt-4 rounded-lg border border-border bg-background p-3"><div className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>Document: {generated.version ? `v${generated.version}` : "Draft"}</span><span className="rounded bg-amber-500/10 px-2 py-1 text-amber-300">{generated.status}</span></div><div className="template-a4-preview mt-3" dangerouslySetInnerHTML={{ __html: generated.rendered }} /><div className="mt-3 text-xs text-muted-foreground">Calculated subtotal: {generated.calculated.subtotal} · Net: {generated.calculated.total_net_weight} · Gross: {generated.calculated.total_gross_weight}</div></div> : null}</section>
-    {message ? <div className="rounded-lg border border-border bg-accent/40 p-3 text-sm text-foreground">{message}</div> : null}
-    <section id="create-document-template" className="rounded-xl border border-border bg-card p-4"><h2 className="text-sm font-medium">Create editable template</h2><p className="mt-1 text-xs text-muted-foreground">Format the document and insert variables at the cursor.</p><div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr_150px]"><select value={type} onChange={(event) => setType(event.target.value as DocumentTemplateType)} className="rounded-md border border-border bg-background px-3 py-2 text-sm">{DOCUMENT_TEMPLATE_TYPES.map((item) => <option key={item} value={item}>{DOCUMENT_TEMPLATE_LABELS[item]}</option>)}</select><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Template name" className="rounded-md border border-border bg-background px-3 py-2 text-sm" /><input value={language} onChange={(event) => setLanguage(event.target.value)} placeholder="Language" className="rounded-md border border-border bg-background px-3 py-2 text-sm" /></div><div className="mt-3"><TemplateEditor value={content} onChange={setContent} variables={TEMPLATE_VARIABLES} /></div><div className="mt-3 flex items-center justify-between"><label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />Use as default</label><button type="button" disabled={pending} onClick={submitText} className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">Save editable template</button></div></section><section className="rounded-xl border border-border bg-card p-4"><h2 className="text-sm font-medium">Upload existing DOCX</h2><div className="mt-3 flex flex-wrap gap-3"><input type="file" accept=".docx,.dotx" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="rounded-md border border-border bg-background px-3 py-2 text-sm" /><button type="button" disabled={pending} onClick={submit} className="inline-flex items-center gap-2 rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50"><Upload className="h-4 w-4" />Upload DOCX</button></div></section>
-    <section className="overflow-x-auto rounded-xl border border-border bg-card"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-border text-xs text-muted-foreground"><tr><th className="px-4 py-3">Type</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Language</th><th className="px-4 py-3">Version</th><th className="px-4 py-3">State</th><th className="px-4 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-border">{templates.map((item) => <tr key={item.id}><td className="px-4 py-3">{DOCUMENT_TEMPLATE_LABELS[item.document_type]}</td><td className="px-4 py-3">{item.name}</td><td className="px-4 py-3">{item.language}</td><td className="px-4 py-3">v{item.version}</td><td className="px-4 py-3">{item.is_default ? <span className="text-emerald-300">★ Default</span> : <button type="button" onClick={() => action(() => setDefaultDocumentTemplate(item.id))} className="text-muted-foreground hover:text-foreground"><Star className="mr-1 inline h-3.5 w-3.5" />Set default</button>} {item.is_active ? <span className="ml-2 text-sky-300">Active</span> : <span className="ml-2 text-muted-foreground">Inactive</span>}</td><td className="px-4 py-3"><div className="flex justify-end gap-2"><a href={`/api/document-templates/${item.id}/download`} className="rounded-md border border-border p-2 text-muted-foreground hover:text-foreground" title="Download"><Download className="h-4 w-4" /></a><button type="button" onClick={() => action(() => setDocumentTemplateActive(item.id, !item.is_active))} className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">{item.is_active ? "Deactivate" : "Activate"}</button><button type="button" onClick={() => action(() => deleteDocumentTemplate(item.id))} className="rounded-md border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10" title="Delete"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}{templates.length === 0 ? <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No templates yet. Click Create template to upload a DOCX.</td></tr> : null}</tbody></table></section>
-  </div>;
+  return <main className="space-y-6">
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">Document Templates</h1><p className="mt-1 text-sm text-muted-foreground">Reuse your Word documents with their original layout and language.</p></div><Link href="/documents/generate" className={buttonClass}>Generate documents</Link></header>
+    {error ? <p role="alert" className="rounded-lg border border-red-500/30 p-4 text-sm text-red-300">{error}</p> : null}
+    {message ? <p role="status" className="rounded-lg border border-border p-3 text-sm">{message}</p> : null}
+    {DOCUMENT_TEMPLATE_TYPES.filter((kind) => ["contract", "supplement", "invoice"].includes(kind) || templates.some((item) => item.document_type === kind)).map((kind) => <section key={kind} className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-semibold">{label(kind)}</h2><button type="button" disabled={pending} onClick={() => chooseUpload(kind)} className={buttonClass}>Upload DOCX</button></div>
+      <div className="space-y-4">{templates.filter((item) => item.document_type === kind).map((item) => <article key={item.id} className="space-y-3 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.company_id ? companies.find((company) => company.id === item.company_id)?.name ?? "Company template" : "Global"} · {item.language.toUpperCase()} · v{item.version} · {item.is_active ? "Active" : "Inactive"}{item.is_default ? " · Default" : ""} · {item.status === "Ready" ? "Ready" : "Needs configuration"}</p></div>
+          <div className="flex flex-wrap gap-2"><button type="button" disabled={pending} onClick={() => chooseUpload(kind, item)} className={buttonClass}>Replace with new version</button><TemplateTestGenerateButton template={item} /><a href={"/api/document-templates/" + item.id + "/download"} className={buttonClass}>Download Original</a></div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">{!item.is_default && item.is_active ? <button type="button" disabled={pending} onClick={() => action(() => setDefaultDocumentTemplate(item.id))} className={buttonClass}>Use as default</button> : null}<button type="button" disabled={pending} onClick={() => action(() => setDocumentTemplateActive(item.id, !item.is_active))} className={buttonClass}>{item.is_active ? "Deactivate" : "Activate"}</button><details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Advanced: custom fields</summary><div className="mt-2"><TemplateConfigureDialog template={item} /></div></details></div>
+      </article>)}</div>
+      {!templates.some((item) => item.document_type === kind) ? <p className="text-sm text-muted-foreground">Upload a DOCX to get started.</p> : null}
+    </section>)}
+    <form ref={uploadRef} onSubmit={(event) => { event.preventDefault(); submit(); }} className="space-y-4 rounded-xl border border-border bg-card p-4">
+      <h2 className="font-medium">{replacement ? "Replace " + replacement.name + " with a new version" : "Upload Word template"}</h2>
+      <p className="text-xs text-muted-foreground">Your original file is retained unchanged. Replacing a template preserves every previous version and generated document.</p>
+      <fieldset disabled={pending} className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm">Document type<select disabled={!!replacement} value={type} onChange={(event) => { const value = DOCUMENT_TEMPLATE_TYPES.find((kind) => kind === event.target.value); if (value) setType(value); }} className={fieldClass}>{DOCUMENT_TEMPLATE_TYPES.map((kind) => <option key={kind} value={kind}>{label(kind)}</option>)}</select></label>
+        <label className="text-sm">Template name<input required value={name} onChange={(event) => setName(event.target.value)} className={fieldClass} /></label>
+        <label className="text-sm">Internal company<select disabled={!!replacement} value={companyId} onChange={(event) => setCompanyId(event.target.value)} className={fieldClass}><option value="">Global (Admin only)</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+        <label className="text-sm">Language<select disabled={!!replacement} value={language} onChange={(event) => setLanguage(event.target.value)} className={fieldClass}><option value="en">English</option><option value="ru">Russian</option><option value="zh">Chinese</option></select></label>
+        <label className="text-sm md:col-span-2">Original Word file<input type="file" required accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className={fieldClass} /></label>
+        <label className="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />Default for this document type, company, and language</label>
+      </fieldset>
+      <div className="flex gap-3"><button type="submit" disabled={pending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">{pending ? "Uploading…" : replacement ? "Upload new version" : "Upload template"}</button>{replacement ? <button type="button" disabled={pending} className={buttonClass} onClick={() => chooseUpload(type)}>Cancel replacement</button> : null}</div>
+    </form>
+  </main>;
 }

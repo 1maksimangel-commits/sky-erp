@@ -42,7 +42,7 @@ export async function verifyAuthHttp({ sql, publicKey }) {
     for (const [table,payload] of [
       ['notifications',{ title: 'Fictional private notification' }],
       ['timeline_events',{ title: 'Fictional private event' }],
-      ['document_templates',{ name: 'Fictional private template', document_type: 'contract', template_content: '{{contract_number}}' }],
+      ['document_templates',{ company_id: own, name: 'Fictional private template', document_type: 'contract', template_content: '{{contract_number}}' }],
       ['contracts',{ contract_number: `HTTP-${own}` }],
       ['crm_customers',{ company_name: 'Fictional private CRM customer' }],
     ]) {

@@ -46,7 +46,7 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         const chunks = [];
         response.on('data', chunk => chunks.push(chunk));
         response.on('error', reject);
-        response.on('end', () => resolve({ status: response.statusCode, headers: new Headers(Object.entries(response.headers).flatMap(([name,value]) => value == null ? [] : [[name, String(value)]])), text: async () => Buffer.concat(chunks).toString('utf8') }));
+        response.on('end', () => resolve({ status: response.statusCode, headers: new Headers(Object.entries(response.headers).flatMap(([name,value]) => value == null ? [] : [[name, String(value)]])), text: async () => Buffer.concat(chunks).toString('utf8'), bytes: async () => Buffer.concat(chunks) }));
       });
       req.on('error', reject);
     }); }
@@ -73,6 +73,8 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
       const cookie = [...jar].map(([name,value]) => `${name}=${value}`).join('; ');
       const ownRoutes = [
         ['/contracts', 'Contracts'], ['/contracts?new=1', 'New Contract'],
+        ['/document-templates', 'Document Templates'], ['/documents/generate', 'Generate Documents'],
+        ...(fixture.generatedContractId ? [[`/documents/generate?contractId=${fixture.generatedContractId}`, 'Document history']] : []),
         ...(fixture.contractId ? [[`/contracts/${fixture.contractId}`, 'Legal parties']] : []),
         ...(fixture.importId ? [[`/contracts/import/${fixture.importId}`, 'Review imported contract']] : []),
         ['/companies', 'SKY TEST'], ['/counterparties', 'PACIFIC TEST SEAFOOD'], ['/products', 'Pacific Cod'], ['/business-cases', 'Updated fictional Deal'],
@@ -88,6 +90,15 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         check(!/permission denied for table|column [^<]* does not exist|Could not find[^<]*(?:schema cache|relationship)|Failed to load (?:companies|counterparties|products|business cases)/i.test(html), `${route} schema/permission compatibility`);
       }
       const foreign = fixtures.find(row => row.company !== fixture.company);
+      if (fixture.generatedDocumentId) {
+        const output = await request(`/api/documents/generated/${fixture.generatedDocumentId}`, { headers: { cookie }, signal: AbortSignal.timeout(30000) });
+        check(output.status === 200 && output.headers.get('content-type')?.includes('wordprocessingml.document'), 'retained DOCX HTTP download');
+        fixture.user.load('src/lib/document-templates/docx-engine.ts').assertDocxIntegrity(await output.bytes());
+      }
+      if (foreign.generatedDocumentId) {
+        const denied = await request(`/api/documents/generated/${foreign.generatedDocumentId}`, { headers: { cookie }, signal: AbortSignal.timeout(30000) });
+        check(denied.status === 404, 'foreign generated DOCX HTTP download denied');
+      }
       for (const route of [`/companies/${foreign.company}`, `/counterparties/${foreign.parties[0]}`, `/products/${foreign.products[0]}`, `/business-cases/${foreign.deal}`]) {
         const response = await request(route, { headers: { cookie }, redirect: 'manual', signal: AbortSignal.timeout(30000) });
         const html = await response.text();

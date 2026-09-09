@@ -1,13 +1,78 @@
 "use client";
-import { useState } from "react";
-import { configureDocumentTemplate, discoverTemplatePlaceholders, getTemplateMappings } from "@/lib/document-templates/actions";
-import type { DocumentTemplate } from "@/lib/document-templates/types";
-import { TEMPLATE_VARIABLES } from "@/lib/document-templates/types";
+
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { bindTemplateExampleValues, configureDocumentTemplate, discoverTemplatePlaceholders, getTemplateMappings } from "@/lib/document-templates/actions";
+import { TEMPLATE_VARIABLES, type DocumentTemplate } from "@/lib/document-templates/types";
 
 export function TemplateConfigureDialog({ template }: { template: DocumentTemplate }) {
-  const [open, setOpen] = useState(false); const [placeholders, setPlaceholders] = useState<string[]>([]); const [mapping, setMapping] = useState<Record<string,string>>({}); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  function autoMap(keys: string[]) { const next: Record<string, string> = {}; for (const key of keys) { const exact = TEMPLATE_VARIABLES.find((item) => item.key === key || item.sourcePath === key); if (exact) next[key] = exact.key; } setMapping(next); }
-  async function openDialog() { setOpen(true); setBusy(true); const result = await discoverTemplatePlaceholders(template.id); const detected = result.data.length ? result.data : ["seller.legal_name", "buyer.legal_name", "contract.number", "product.name", "product.quantity", "product.unit_price", "product.amount"]; setPlaceholders(detected); autoMap(detected); const saved = await getTemplateMappings(template.id); if (saved.data.length) { setPlaceholders(saved.data.map((item) => item.placeholder)); setMapping(Object.fromEntries(saved.data.map((item) => [item.placeholder, item.sky_variable ?? ""]))); } setMessage(result.error && result.data.length ? result.error : saved.error); setBusy(false); }
-  async function save() { setBusy(true); const result = await configureDocumentTemplate({ templateId: template.id, mappings: placeholders.map((placeholder) => ({ placeholder, skyVariable: mapping[placeholder] ?? null, isRepeatingProductRow: placeholder.startsWith("product.") })) }); setMessage(result.success ? "Configuration saved. Template is Ready." : result.error); setBusy(false); if (result.success) setOpen(false); }
-  return <><button type="button" onClick={openDialog} className="rounded-md border border-sky-500/30 px-2 py-1 text-xs text-sky-300">Configure</button>{open ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-2xl rounded-xl border border-border bg-background p-5"><div className="flex items-start justify-between"><div><h2 className="font-semibold">Configure Template</h2><p className="text-xs text-muted-foreground">{template.name} · {template.document_type} · v{template.version}</p></div><button type="button" onClick={() => setOpen(false)}>×</button></div><div className="mt-4 max-h-80 space-y-2 overflow-auto">{busy && !placeholders.length ? <p className="text-sm text-muted-foreground">Detecting placeholders…</p> : placeholders.length ? placeholders.map((placeholder) => <div key={placeholder} className="grid grid-cols-2 items-center gap-2"><code className="rounded bg-muted px-2 py-1 text-xs">&#123;&#123;{placeholder}&#125;&#125;</code><select value={mapping[placeholder] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [placeholder]: event.target.value }))} className="rounded border border-border bg-background px-2 py-1 text-sm"><option value="">Select SKY field</option>{TEMPLATE_VARIABLES.map((variable) => <option key={variable.key} value={variable.key}>{variable.label}</option>)}</select></div>) : <p className="text-sm text-muted-foreground">No placeholders detected. Add placeholders to the DOCX or configure fields manually.</p>}</div>{message ? <p className="mt-3 text-sm text-muted-foreground">{message}</p> : null}<div className="mt-4 flex justify-end gap-2"><button type="button" onClick={openDialog} className="rounded border border-border px-3 py-2 text-sm">Detect Again</button><button type="button" disabled={busy} onClick={save} className="rounded bg-foreground px-3 py-2 text-sm text-background">Save Configuration</button></div></div></div> : null}</>;
+  const router = useRouter();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [placeholders, setPlaceholders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [required, setRequired] = useState<Record<string, boolean>>({});
+  const [text, setText] = useState("");
+  const [selectedText, setSelectedText] = useState("");
+  const [variable, setVariable] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    setBusy(true); setMessage(null);
+    try {
+      const [detected, saved] = await Promise.all([discoverTemplatePlaceholders(template.id), getTemplateMappings(template.id)]);
+      if (detected.error || saved.error) throw new Error(detected.error ?? saved.error ?? "Could not inspect template.");
+      setPlaceholders(detected.data); setText(detected.text);
+      const next: Record<string, string> = {};
+      for (const key of detected.data) next[key] = saved.data.find((item) => item.placeholder === key)?.sky_variable ?? TEMPLATE_VARIABLES.find((item) => item.key === key)?.key ?? "";
+      setMapping(next); setRequired(Object.fromEntries(saved.data.map((item) => [item.placeholder, item.required])));
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Could not inspect template."); }
+    finally { setBusy(false); }
+  }
+  async function save() {
+    setBusy(true); setMessage(null);
+    try {
+      const result = await configureDocumentTemplate({ templateId: template.id, mappings: placeholders.map((placeholder) => ({
+        placeholder, skyVariable: mapping[placeholder] || null, required: required[placeholder] ?? false,
+        isRepeatingProductRow: (mapping[placeholder] ?? placeholder).startsWith("product."),
+      })) });
+      if (!result.success) throw new Error(result.error);
+      router.refresh(); dialog.current?.close();
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Configuration failed."); }
+    finally { setBusy(false); }
+  }
+  async function bind() {
+    setBusy(true); setMessage(null);
+    try {
+      const result = await bindTemplateExampleValues(template.id, [{ text: selectedText, variable }]);
+      if (!result.success) throw new Error(result.error);
+      setSelectedText(""); setVariable(""); router.refresh(); await load();
+      setMessage("Selected example text is now a reusable field. The original Word file is unchanged.");
+    } catch (failure) { setMessage(failure instanceof Error ? failure.message : "Could not configure example text."); }
+    finally { setBusy(false); }
+  }
+  const control = "w-full rounded border border-border bg-background px-2 py-2 text-sm";
+  return <>
+    <button type="button" onClick={() => { dialog.current?.showModal(); void load(); }} className="rounded-md border border-border px-3 py-2 text-xs">Configure custom fields</button>
+    <dialog ref={dialog} className="fixed inset-0 m-auto max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-border bg-background p-5 text-foreground backdrop:bg-black/70" aria-labelledby={"configure-" + template.id}>
+      <div className="flex items-start justify-between gap-3"><div><h2 id={"configure-" + template.id} className="font-semibold">Advanced template configuration</h2><p className="mt-1 text-xs text-muted-foreground">{template.name} · v{template.version}</p></div><button type="button" aria-label="Close configuration" onClick={() => dialog.current?.close()} className="rounded border border-border px-3 py-1">Close</button></div>
+      <p className="my-4 text-sm text-muted-foreground">Known fields are configured automatically. Choose a business field for custom names and mark only genuinely required values.</p>
+      <fieldset disabled={busy} className="space-y-3">
+        {placeholders.map((placeholder) => <div key={placeholder} className="grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <span className="break-all text-xs">{placeholder}</span>
+          <select aria-label={"Business field for " + placeholder} className={control} value={mapping[placeholder] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [placeholder]: event.target.value }))}><option value="">Choose business field</option>{TEMPLATE_VARIABLES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={required[placeholder] ?? false} onChange={(event) => setRequired((current) => ({ ...current, [placeholder]: event.target.checked }))} />Required</label>
+        </div>)}
+        {!placeholders.length ? <p className="text-sm text-muted-foreground">{busy ? "Reading Word document…" : "No reusable fields found. Select example text below to configure it."}</p> : null}
+        <button type="button" disabled={!placeholders.length || busy} onClick={() => void save()} className="rounded bg-foreground px-3 py-2 text-sm text-background disabled:opacity-50">Save configuration</button>
+      </fieldset>
+      <details className="mt-5 border-t border-border pt-4" open={!placeholders.length && !!text}><summary className="cursor-pointer text-sm font-medium">Convert example values into reusable fields</summary><div className="mt-3 space-y-3">
+        <p className="text-xs text-muted-foreground">Highlight the exact example value in the text below, then choose its business meaning. Only the selected text is replaced in a configured copy.</p>
+        <textarea aria-label="Template text: select an example value" readOnly value={text} rows={10} className={control} onSelect={(event) => { const input = event.currentTarget; setSelectedText(input.value.slice(input.selectionStart, input.selectionEnd)); }} />
+        <label className="block text-sm">Selected example text<input className={control} value={selectedText} onChange={(event) => setSelectedText(event.target.value)} /></label>
+        <label className="block text-sm">Business field<select className={control} value={variable} onChange={(event) => setVariable(event.target.value)}><option value="">Choose business field</option>{TEMPLATE_VARIABLES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+        <button type="button" disabled={busy || !selectedText || !variable} onClick={() => void bind()} className="rounded border border-border px-3 py-2 text-sm disabled:opacity-50">Bind selected text</button>
+      </div></details>
+      {message ? <p role="status" className="mt-3 text-sm">{message}</p> : null}
+    </dialog>
+  </>;
 }

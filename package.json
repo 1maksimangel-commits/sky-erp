@@ -12,6 +12,7 @@
     "core:check": "node --test scripts/database/core.test.mjs && node scripts/database/replay.mjs",
     "contracts:check": "node --test scripts/database/contracts.test.mjs scripts/database/auth-security.test.mjs && node scripts/database/replay.mjs",
     "contracts:test": "node --test scripts/database/contracts.test.mjs",
+    "documents:check": "node --test scripts/database/documents-engine.test.mjs scripts/database/auth-security.test.mjs && node scripts/database/replay.mjs",
     "db:test": "node --test scripts/database/compare.test.mjs",
     "auth:test": "node --test scripts/database/auth-security.test.mjs",
     "auth:bundle": "node scripts/database/auth-security.test.mjs --bundle"

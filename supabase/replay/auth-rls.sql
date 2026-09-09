@@ -284,18 +284,22 @@ begin
   delete from public.document_templates where id=pg_temp.fixture_id(tag,'document_templates');
   perform pg_temp.assert_true(found,'Own DELETE document_templates');
   insert into public.document_templates(id,company_id,document_type,name,template_content) values (pg_temp.fixture_id(tag,'document_templates'),company,'contract','Fictional-' || tag || '-name','{{contract_number}}');
-  insert into public.generated_documents(id,company_id,document_type,snapshot_hash,title) values (pg_temp.fixture_id(tag,'generated_documents'),company,'contract','fictional-auth-fixture','Fictional-' || tag || '-title');
-  update public.generated_documents set id=id where id=pg_temp.fixture_id(tag,'generated_documents');
-  perform pg_temp.assert_true(found,'Own UPDATE generated_documents');
-  delete from public.generated_documents where id=pg_temp.fixture_id(tag,'generated_documents');
-  perform pg_temp.assert_true(found,'Own DELETE generated_documents');
-  insert into public.generated_documents(id,company_id,document_type,snapshot_hash,title) values (pg_temp.fixture_id(tag,'generated_documents'),company,'contract','fictional-auth-fixture','Fictional-' || tag || '-title');
   insert into public.template_mappings(id,company_id,placeholder,template_id) values (pg_temp.fixture_id(tag,'template_mappings'),company,'Fictional-' || tag || '-placeholder',pg_temp.fixture_id(tag,'document_templates'));
   update public.template_mappings set id=id where id=pg_temp.fixture_id(tag,'template_mappings');
   perform pg_temp.assert_true(found,'Own UPDATE template_mappings');
   delete from public.template_mappings where id=pg_temp.fixture_id(tag,'template_mappings');
   perform pg_temp.assert_true(found,'Own DELETE template_mappings');
   insert into public.template_mappings(id,company_id,placeholder,template_id) values (pg_temp.fixture_id(tag,'template_mappings'),company,'Fictional-' || tag || '-placeholder',pg_temp.fixture_id(tag,'document_templates'));
+  insert into public.generated_documents(id,company_id,document_type,snapshot_hash,title,output_hash,docx_storage_path,source_template_id,source_template_version,snapshot_data)
+    values (pg_temp.fixture_id(tag,'generated_documents'),company,'contract',repeat('a',64),'Fictional-' || tag || '-title',repeat('b',64),'companies/'||company::text||'/fictional-output.docx',pg_temp.fixture_id(tag,'document_templates'),1,'{"fictional":true}');
+  update public.generated_documents set id=id where id=pg_temp.fixture_id(tag,'generated_documents');
+  perform pg_temp.assert_true(found,'Own UPDATE generated_documents');
+  begin
+    delete from public.generated_documents where id=pg_temp.fixture_id(tag,'generated_documents');
+    raise exception 'Generated document retention was bypassed' using errcode='23514';
+  exception when raise_exception then
+    perform pg_temp.assert_true(sqlerrm='Generated document versions must be retained','Generated document retention guard');
+  end;
   insert into public.document_generation_batches(id,company_id,batch_number) values (pg_temp.fixture_id(tag,'document_generation_batches'),company,'Fictional-' || tag || '-batch_number');
   update public.document_generation_batches set id=id where id=pg_temp.fixture_id(tag,'document_generation_batches');
   perform pg_temp.assert_true(found,'Own UPDATE document_generation_batches');

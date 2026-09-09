@@ -9,6 +9,7 @@ import { verifyAuthHttp } from './auth-http.mjs';
 import { verifyCoreHttp } from './core-http.mjs';
 import { verifyCoreUi } from './core-ui.mjs';
 import { verifyContractsHttp } from './contracts-http.mjs';
+import { verifyDocumentsHttp } from './documents-http.mjs';
 
 // No connection-string, project-ref, workdir, or remote-target arguments accepted.
 // Only this process's newly created, randomly named local Supabase is reachable.
@@ -88,12 +89,13 @@ try {
   await verifyAuthHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   const core = await verifyCoreHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   await verifyContractsHttp(core);
+  await verifyDocumentsHttp(core);
   await verifyCoreUi({ ...core, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   verifiedResult = {
     status: 'PASS', cli: version, migrations: migrations.map(m => ({ name: m.name, sha256: sha256(m.sql) })),
     tablesChecked: contract.tables.length, selectsChecked: contract.selects.length,
     columnUsesChecked: contract.columns.length, rpcNamesChecked: [...new Set(contract.rpcs.map(r => r.name))],
-    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS', coreCrudTests: 'PASS', coreUiHttpTests: 'PASS', contractsFunctionalTests: 'PASS',
+    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS', coreCrudTests: 'PASS', coreUiHttpTests: 'PASS', contractsFunctionalTests: 'PASS', documentsFunctionalTests: 'PASS',
   };
 } catch (error) {
   console.error(error.message);

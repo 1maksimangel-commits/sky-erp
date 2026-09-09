@@ -39,6 +39,7 @@ export function ContractPartyFields({ value, onChange, companies, counterparties
         {party ? ["legal_name", "address", "registration_number", "tax_id", "bank_details"].map(field => <label key={field} className="text-xs">{field.replaceAll("_", " ")}
           <input aria-label={`${role} ${field}`} disabled={disabled} className={inputClass} value={party.snapshot[field] ?? ""} onChange={e => onChange(value.map(p => p.role_code === role ? { ...p, snapshot: { ...p.snapshot, [field]: e.target.value } } : p))} />
         </label>) : null}
+        {party ? <details className="sm:col-span-3"><summary className="cursor-pointer text-xs">Agreed bank and signatory details for documents</summary><div className="mt-2 grid gap-2 sm:grid-cols-3">{["bank_name", "bank_account", "bank_swift", "bank_address", "signatory_name", "signatory_title"].map(field => <label key={field} className="text-xs">{field.replaceAll("_", " ")}<input disabled={disabled} className={inputClass} value={party.snapshot[field] ?? ""} onChange={e => onChange(value.map(p => p.role_code === role ? { ...p, snapshot: { ...p.snapshot, [field]: e.target.value } } : p))} /></label>)}</div><p className="mt-2 text-xs text-muted-foreground">These agreed values stay with this Contract when master records change.</p></details> : null}
       </div>;
     })}
     <a href="/counterparties?new=1" target="_blank" rel="noreferrer" className="text-xs underline">Create an external Counterparty</a>

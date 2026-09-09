@@ -1,5 +1,10 @@
 # Module — Documents
 
+Phase 5 document templates/generation: see
+[DocumentGeneration](../Development/DocumentGeneration.md) for the canonical
+review workflow, immutable originals/outputs, versioning and regression gate.
+That implementation supersedes the legacy generation risks described below.
+
 ## Purpose
 
 DMS: store, version, preview, and link files to ERP entities.

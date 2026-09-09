@@ -1,11 +1,10 @@
 import { DocumentTemplatesView } from "@/components/document-templates/DocumentTemplatesView";
 import { listDocumentTemplates } from "@/lib/document-templates/actions";
-import { getBusinessCases } from "@/lib/business-cases";
+import { getCompanies } from "@/lib/companies";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentTemplatesPage() {
-  const result = await listDocumentTemplates();
-  const deals = await getBusinessCases();
-  return <DocumentTemplatesView templates={result.data} deals={deals.data ?? []} error={result.error ?? deals.error} />;
+  const [result, companies] = await Promise.all([listDocumentTemplates(), getCompanies()]);
+  return <DocumentTemplatesView templates={result.data} companies={companies.data ?? []} error={result.error ?? companies.error} />;
 }

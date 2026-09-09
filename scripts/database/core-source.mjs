@@ -29,7 +29,7 @@ export function coreSource(client, providerFixture = null) {
       if (specifier === '@/lib/documents/actions') return { uploadDocument() { throw new Error('Core CRUD unexpectedly uploaded a document'); } };
       if (specifier.startsWith('@/')) return load(path.join(root, 'src', specifier.slice(2)));
       if (specifier.startsWith('.')) return load(path.resolve(path.dirname(file), specifier));
-      if (['zod', 'react', 'crypto', 'node:crypto', 'node:zlib'].includes(specifier)) return nativeRequire(specifier);
+      if (['zod', 'react', 'crypto', 'node:crypto', 'node:zlib', 'pizzip', 'docxtemplater'].includes(specifier)) return nativeRequire(specifier);
       throw new Error(`Unreviewed core test dependency: ${specifier}`);
     };
     const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
