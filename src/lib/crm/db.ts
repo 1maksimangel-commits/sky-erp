@@ -374,14 +374,18 @@ export async function getCrmLinkedContracts(customer: CrmCustomer): Promise<{
       return { data: [], error: null };
     }
 
+    const parties = await supabase.from("contract_parties").select("contract_id").eq("counterparty_id", customer.counterparty_id);
+    if (parties.error) return { data: [], error: parties.error.message };
+    const contractIds = [...new Set((parties.data ?? []).map(row => row.contract_id))];
     const { data, error } = await supabase
       .from("contracts")
       .select(
         "id, contract_number, title, status, currency, amount, contract_date, buyer_id, supplier_id"
       )
       .or(
-        `buyer_id.eq.${customer.counterparty_id},supplier_id.eq.${customer.counterparty_id}`
+        `buyer_id.eq.${customer.counterparty_id},supplier_id.eq.${customer.counterparty_id}${contractIds.length ? `,id.in.(${contractIds.join(",")})` : ""}`
       )
+      .is("deleted_at", null)
       .order("contract_date", { ascending: false })
       .limit(50);
 
@@ -405,4 +409,17 @@ export async function getCrmLinkedContracts(customer: CrmCustomer): Promise<{
   } catch (error) {
     return { data: [], error: serializeUnknownError(error).message };
   }
+}
+
+/** CRM links only through the canonical counterparty and Deal IDs. */
+export async function getCrmLinkedDeals(customer: CrmCustomer): Promise<{ data: { id: string; case_number: string; title: string | null }[]; error: string | null }> {
+  if (!customer.counterparty_id) return { data: [], error: null };
+  const db = await createClient();
+  const participants = await db.from("deal_participants").select("business_case_id").eq("counterparty_id", customer.counterparty_id);
+  if (participants.error) return { data: [], error: participants.error.message };
+  const ids = [...new Set((participants.data ?? []).map(row => row.business_case_id))];
+  const result = await db.from("business_cases").select("id,case_number,title")
+    .or(`supplier_id.eq.${customer.counterparty_id},buyer_id.eq.${customer.counterparty_id},consignee_id.eq.${customer.counterparty_id}${ids.length ? `,id.in.(${ids.join(",")})` : ""}`)
+    .order("created_at", { ascending: false });
+  return { data: result.data ?? [], error: result.error?.message ?? null };
 }

@@ -2,208 +2,63 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type {
-  AdjustInventoryInput,
-  IssueInventoryInput,
-  ReceiveInventoryInput,
-  TransferInventoryInput,
-} from "@/lib/warehouse/types";
-import {
-  validateAdjustInventoryInput,
-  validateIssueInventoryInput,
-  validateReceiveInventoryInput,
-  validateTransferInventoryInput,
-} from "@/lib/warehouse/validation";
-import { recordEntityEvent } from "@/lib/platform/audit";
-import { assertCan } from "@/lib/platform/permissions";
+import { getAccessContext, can } from "@/lib/platform/permissions";
+import type { AdjustInventoryInput, IssueInventoryInput, ReceiveInventoryInput, TransferInventoryInput } from "./types";
+import { validateAdjustInventoryInput, validateIssueInventoryInput, validateReceiveInventoryInput, validateTransferInventoryInput } from "./validation";
 
-export type WarehouseActionResult =
-  | { success: true; id?: string }
-  | { success: false; error: string };
+export type WarehouseActionResult = { success: true; id?: string } | { success: false; error: string };
 
-function nullIfEmpty(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function formatRpcError(error: { message: string }): string {
-  if (
-    /warehouse_|inventory|stock_movements|schema cache|does not exist|PGRST202|PGRST205|42703/i.test(
-      error.message
-    )
-  ) {
-    return "Warehouse schema is incomplete. Apply supabase/migrations/20260804170000_warehouse_module.sql in the Supabase SQL Editor.";
-  }
-
-  return error.message.replace(/^ERROR:\s*/i, "").replace(/\n/g, " ") ||
-    "Warehouse operation failed. Please try again.";
-}
-
-function revalidateWarehousePaths() {
+async function post(input: ReceiveInventoryInput | IssueInventoryInput | AdjustInventoryInput, type: "inbound" | "outbound" | "adjustment"): Promise<WarehouseActionResult> {
+  const context = await getAccessContext();
+  const company = input.company_id || context?.companyId;
+  if (!company || !await can("warehouse.write", company)) return { success: false, error: "Select an authorized stock owner company." };
+  const db = await createClient();
+  const { data, error } = await db.rpc("warehouse_post_movement", {
+    p_company_id: company, p_warehouse_id: input.warehouse_id, p_product_id: input.product_id,
+    p_quantity: type === "outbound" ? -input.quantity : input.quantity, p_lot_number: input.lot_number.trim(),
+    p_movement_type: type, p_reference: ("reason" in input ? input.reason : input.reference) || null,
+    p_contract_id: input.contract_id || null, p_shipment_id: input.shipment_id || null, p_business_case_id: input.business_case_id || null,
+    p_production_date: "production_date" in input ? input.production_date || null : null,
+    p_expiry_date: "expiry_date" in input ? input.expiry_date || null : null,
+  });
+  if (error) return { success: false, error: error.message };
   revalidatePath("/warehouse");
-  revalidatePath("/products");
+  if (input.business_case_id) revalidatePath(`/business-cases/${input.business_case_id}`);
+  if (input.contract_id) revalidatePath(`/contracts/${input.contract_id}`);
+  return { success: true, id: data };
 }
 
-export async function receiveInventory(
-  input: ReceiveInventoryInput
-): Promise<WarehouseActionResult> {
-  const denied = await assertCan("warehouse.write");
-  if (denied) {
-    return { success: false, error: denied };
-  }
+export async function receiveInventory(input: ReceiveInventoryInput): Promise<WarehouseActionResult> { const error = validateReceiveInventoryInput(input); return error ? { success: false, error } : post(input, "inbound"); }
+export async function issueInventory(input: IssueInventoryInput): Promise<WarehouseActionResult> { const error = validateIssueInventoryInput(input); return error ? { success: false, error } : post(input, "outbound"); }
+export async function adjustInventory(input: AdjustInventoryInput): Promise<WarehouseActionResult> { const error = validateAdjustInventoryInput(input); return error ? { success: false, error } : post(input, "adjustment"); }
 
-  const validationError = validateReceiveInventoryInput(input);
-  if (validationError) {
-    return { success: false, error: validationError };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("warehouse_receive_stock", {
-    p_warehouse_id: input.warehouse_id,
-    p_product_id: input.product_id,
-    p_quantity: input.quantity,
-    p_lot_number: input.lot_number.trim(),
-    p_production_date: nullIfEmpty(input.production_date),
-    p_expiry_date: nullIfEmpty(input.expiry_date),
-    p_reference: nullIfEmpty(input.reference),
-    p_contract_id: nullIfEmpty(input.contract_id),
-    p_shipment_id: nullIfEmpty(input.shipment_id),
-    p_business_case_id: nullIfEmpty(input.business_case_id),
+export async function transferInventory(input: TransferInventoryInput): Promise<WarehouseActionResult> {
+  const invalid = validateTransferInventoryInput(input);
+  if (invalid) return { success: false, error: invalid };
+  const context = await getAccessContext();
+  const company = input.company_id || context?.companyId;
+  if (!company || !await can("warehouse.write", company)) return { success: false, error: "Select an authorized stock owner company." };
+  const db = await createClient();
+  const { data, error } = await db.rpc("warehouse_transfer_owned", {
+    p_company_id: company, p_from_location: input.from_location, p_to_location: input.to_location,
+    p_product_id: input.product_id, p_quantity: input.quantity, p_lot_number: input.lot_number.trim(),
+    p_transfer_date: input.transfer_date || null, p_reference: input.reference || null,
+    p_contract_id: input.contract_id || null, p_shipment_id: input.shipment_id || null, p_business_case_id: input.business_case_id || null,
   });
-
-  if (error) {
-    return { success: false, error: formatRpcError(error) };
-  }
-
-  const lotId = data as string;
-  await recordEntityEvent({
-    entityType: "warehouse_lot",
-    entityId: lotId,
-    action: "received",
-    eventType: "warehouse_received",
-    title: "Warehouse received",
-    summary: `Received ${input.quantity} on lot ${input.lot_number.trim()}`,
-    newValue: {
-      quantity: input.quantity,
-      lot_number: input.lot_number.trim(),
-      product_id: input.product_id,
-    },
-    notify: {
-      title: "Warehouse received",
-      body: input.lot_number.trim(),
-      category: "warehouse",
-      href: `/warehouse/lots/${lotId}`,
-    },
-    fanout: [
-      ...(input.shipment_id
-        ? [{ entityType: "shipment", entityId: input.shipment_id }]
-        : []),
-      ...(input.contract_id
-        ? [{ entityType: "contract", entityId: input.contract_id }]
-        : []),
-      ...(input.business_case_id
-        ? [{ entityType: "business_case", entityId: input.business_case_id }]
-        : []),
-    ],
-  });
-
-  revalidateWarehousePaths();
-  return { success: true, id: lotId };
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/warehouse");
+  return { success: true, id: data };
 }
 
-export async function issueInventory(
-  input: IssueInventoryInput
-): Promise<WarehouseActionResult> {
-  const denied = await assertCan("warehouse.write");
-  if (denied) {
-    return { success: false, error: denied };
-  }
-
-  const validationError = validateIssueInventoryInput(input);
-  if (validationError) {
-    return { success: false, error: validationError };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("warehouse_issue_stock", {
-    p_warehouse_id: input.warehouse_id,
-    p_product_id: input.product_id,
-    p_quantity: input.quantity,
-    p_lot_number: input.lot_number.trim(),
-    p_reference: nullIfEmpty(input.reference),
-    p_contract_id: nullIfEmpty(input.contract_id),
-    p_shipment_id: nullIfEmpty(input.shipment_id),
-    p_business_case_id: nullIfEmpty(input.business_case_id),
-  });
-
-  if (error) {
-    return { success: false, error: formatRpcError(error) };
-  }
-
-  revalidateWarehousePaths();
-  return { success: true, id: data as string };
-}
-
-export async function transferInventory(
-  input: TransferInventoryInput
-): Promise<WarehouseActionResult> {
-  const denied = await assertCan("warehouse.write");
-  if (denied) {
-    return { success: false, error: denied };
-  }
-
-  const validationError = validateTransferInventoryInput(input);
-  if (validationError) {
-    return { success: false, error: validationError };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("warehouse_transfer_stock", {
-    p_from_location: input.from_location,
-    p_to_location: input.to_location,
-    p_product_id: input.product_id,
-    p_quantity: input.quantity,
-    p_lot_number: input.lot_number.trim(),
-    p_transfer_date: nullIfEmpty(input.transfer_date),
-    p_reference: nullIfEmpty(input.reference),
-  });
-
-  if (error) {
-    return { success: false, error: formatRpcError(error) };
-  }
-
-  revalidateWarehousePaths();
-  return { success: true, id: data as string };
-}
-
-export async function adjustInventory(
-  input: AdjustInventoryInput
-): Promise<WarehouseActionResult> {
-  const denied = await assertCan("warehouse.write");
-  if (denied) {
-    return { success: false, error: denied };
-  }
-
-  const validationError = validateAdjustInventoryInput(input);
-  if (validationError) {
-    return { success: false, error: validationError };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("warehouse_adjust_stock", {
-    p_warehouse_id: input.warehouse_id,
-    p_product_id: input.product_id,
-    p_quantity: input.quantity,
-    p_lot_number: input.lot_number.trim(),
-    p_reason: nullIfEmpty(input.reason),
-    p_production_date: nullIfEmpty(input.production_date),
-    p_expiry_date: nullIfEmpty(input.expiry_date),
-  });
-
-  if (error) {
-    return { success: false, error: formatRpcError(error) };
-  }
-
-  revalidateWarehousePaths();
-  return { success: true, id: data as string };
+export async function getWarehouseOperationChoices() {
+  const db = await createClient();
+  const context = await getAccessContext();
+  const [companies, contracts, deals, shipments] = await Promise.all([
+    db.from("companies").select("id, name").order("name"),
+    db.from("contracts").select("id, contract_number, business_case_id").order("contract_number"),
+    db.from("business_cases").select("id, title").order("title"),
+    db.from("shipments").select("id, container, contract_id").order("created_at", { ascending: false }),
+  ]);
+  const error = companies.error || contracts.error || deals.error || shipments.error;
+  return { companies: companies.data || [], contracts: contracts.data || [], deals: deals.data || [], shipments: shipments.data || [], companyId: context?.companyId || null, error: error?.message || null };
 }

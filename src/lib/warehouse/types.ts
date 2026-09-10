@@ -16,6 +16,7 @@ export const LOT_STATUSES = [
 ] as const;
 
 export type ReceiveInventoryInput = {
+  company_id?: string | null;
   warehouse_id: string;
   product_id: string;
   quantity: number;
@@ -29,6 +30,7 @@ export type ReceiveInventoryInput = {
 };
 
 export type IssueInventoryInput = {
+  company_id?: string | null;
   warehouse_id: string;
   product_id: string;
   quantity: number;
@@ -40,6 +42,10 @@ export type IssueInventoryInput = {
 };
 
 export type TransferInventoryInput = {
+  company_id?: string | null;
+  contract_id?: string | null;
+  shipment_id?: string | null;
+  business_case_id?: string | null;
   from_location: string;
   to_location: string;
   product_id: string;
@@ -50,6 +56,10 @@ export type TransferInventoryInput = {
 };
 
 export type AdjustInventoryInput = {
+  company_id?: string | null;
+  contract_id?: string | null;
+  shipment_id?: string | null;
+  business_case_id?: string | null;
   warehouse_id: string;
   product_id: string;
   quantity: number;

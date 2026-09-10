@@ -79,7 +79,7 @@ export function ReportsView({ reports, error }: ReportsViewProps) {
   return (
     <div className="space-y-8">
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-        Read-only reports. Cash-flow and profit totals sum nominal amounts across
+        Legacy reports — unverified until the Deal economics phase. These read-only diagnostics are not the canonical financial position. Cash-flow and profit totals sum nominal amounts across
         currencies without FX conversion — treat multi-currency aggregates as
         indicative only.
       </div>

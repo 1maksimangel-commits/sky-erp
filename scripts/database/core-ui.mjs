@@ -72,6 +72,13 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
       check(!attached.error, 'SSR session cookies');
       const cookie = [...jar].map(([name,value]) => `${name}=${value}`).join('; ');
       const ownRoutes = [
+        ['/warehouse', 'Warehouse'], ['/logistics', 'Logistics'], ['/finance', 'Finance'], ['/crm', 'CRM'],
+        ['/finance/invoices', 'Invoices'], ['/finance/payments', 'Payments'], ['/finance/bank-accounts', 'Bank Accounts'], ['/finance/exchange-rates', 'Exchange Rates'],
+        ['/finance/expenses', 'Expenses'], ['/finance/commissions', 'Commissions'],
+        ...(fixture.shipmentId ? [[`/logistics/${fixture.shipmentId}`, 'Shipment']] : []),
+        ...(fixture.invoiceId ? [[`/finance/invoices/${fixture.invoiceId}`, 'Invoice']] : []),
+        ...(fixture.paymentId ? [[`/finance/payments/${fixture.paymentId}`, 'Payment']] : []),
+        ...(fixture.crmId ? [[`/crm/${fixture.crmId}`, 'Linked business records']] : []),
         ['/contracts', 'Contracts'], ['/contracts?new=1', 'New Contract'],
         ['/document-templates', 'Document Templates'], ['/documents/generate', 'Generate Documents'],
         ...(fixture.generatedContractId ? [[`/documents/generate?contractId=${fixture.generatedContractId}`, 'Document history']] : []),
@@ -87,7 +94,7 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         const response = await request(route, { headers: { cookie }, redirect: 'manual', signal: AbortSignal.timeout(90000) });
         const html = await response.text();
         check(response.status === 200 && html.includes(marker), `${fixture.user.tag} ${route}`);
-        check(!/permission denied for table|column [^<]* does not exist|Could not find[^<]*(?:schema cache|relationship)|Failed to load (?:companies|counterparties|products|business cases)/i.test(html), `${route} schema/permission compatibility`);
+        check(!/permission denied for table|column [^<]* does not exist|Could not find[^<]*(?:schema cache|relationship)|Failed to load (?:companies|counterparties|products|business cases)|Unable to load operational records|schema is incomplete/i.test(html), `${route} schema/permission compatibility`);
       }
       const foreign = fixtures.find(row => row.company !== fixture.company);
       if (fixture.generatedDocumentId) {

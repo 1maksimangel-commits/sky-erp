@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
 import { DetailGrid, DetailItem } from "@/components/platform/DetailGrid";
 import { EntityWorkspace } from "@/components/platform/EntityWorkspace";
-import { getFinancePaymentById } from "@/lib/finance/db";
+import { getFinancePaymentById, getFinanceInvoices } from "@/lib/finance/db";
+import { createClient } from "@/lib/supabase/server";
+import { PaymentRecordActions } from "@/components/finance/PaymentRecordActions";
 import { formatFinanceDate, formatMoney } from "@/lib/finance/format";
 import { getEntityWorkspaceBundle } from "@/lib/platform/entity-bundle";
+import { getAccessContext } from "@/lib/platform/permissions";
 
 export default async function PaymentDetailPage({
   params,
@@ -19,6 +22,10 @@ export default async function PaymentDetailPage({
   if (!payment) {
     notFound();
   }
+  const db = await createClient();
+  const context = await getAccessContext();
+  const [invoices, allocations] = await Promise.all([getFinanceInvoices(), db.from("payment_allocations").select("id,invoice_id,amount").eq("payment_id", id)]);
+  if (allocations.error || invoices.error) throw new Error(allocations.error?.message ?? invoices.error ?? "Unable to load allocations");
 
   return (
     <EntityWorkspace
@@ -36,7 +43,8 @@ export default async function PaymentDetailPage({
       linked={bundle.linked}
       paymentId={id}
       overview={
-        <DetailGrid>
+        <div className="space-y-4"><PaymentRecordActions id={id} status={payment.status} invoices={invoices.data ?? []} allocations={allocations.data ?? []} /><DetailGrid>
+          <DetailItem label="Company perspective" value={context?.companyId && payment.payer_company_id === context.companyId ? "Outgoing" : context?.companyId && payment.payee_company_id === context.companyId ? "Incoming" : "Select an internal company perspective"} />
           <DetailItem
             label="Date"
             value={formatFinanceDate(payment.payment_date)}
@@ -61,7 +69,7 @@ export default async function PaymentDetailPage({
           <DetailItem label="Reference" value={payment.reference} />
           <DetailItem label="Status" value={payment.status} />
           <DetailItem label="Notes" value={payment.notes} />
-        </DetailGrid>
+        </DetailGrid></div>
       }
     />
   );

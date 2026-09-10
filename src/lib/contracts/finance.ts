@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getBusinessCaseIdForContract } from "@/lib/contracts/relations";
 
 export type Invoice = {
   id: string;
@@ -50,125 +49,42 @@ export type ContractFinanceResult =
       error: string;
     };
 
-function sumPaidPayments(payments: Payment[]): number {
-  return payments.reduce((sum, payment) => {
-    if (payment.status?.toLowerCase() === "paid" && payment.amount != null) {
-      return sum + payment.amount;
-    }
-
-    return sum;
-  }, 0);
-}
-
 export async function getContractFinance(
   contractId: string,
-  contractNumber: string,
+  _contractNumber: string,
   contractAmount: number | null,
   currency: string | null
 ): Promise<ContractFinanceResult> {
-  const supabase = await createClient();
-
-  const [invoicesResult, businessCaseId] = await Promise.all([
-    supabase
-      .from("invoices")
-      .select(
-        "id, contract_id, invoice_number, amount, currency, status, due_date, paid_amount, outstanding, created_at"
-      )
-      .eq("contract_id", contractId)
-      .order("created_at", { ascending: false }),
-    getBusinessCaseIdForContract(contractNumber, contractId),
-  ]);
-
-  if (invoicesResult.error) {
-    return {
-      summary: null,
-      invoices: null,
-      payments: null,
-      error: invoicesResult.error.message,
-    };
-  }
-
-  const invoices = (invoicesResult.data ?? []) as Invoice[];
-  const invoiceIds = invoices.map((invoice) => invoice.id);
-  const paymentById = new Map<string, Payment>();
-
-  if (invoiceIds.length) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select(
-        "id, business_case_id, invoice_id, amount, currency, status, payment_date, notes, created_at"
-      )
-      .in("invoice_id", invoiceIds)
-      .order("payment_date", { ascending: false, nullsFirst: false });
-
-    if (error) {
-      return {
-        summary: null,
-        invoices: null,
-        payments: null,
-        error: error.message,
-      };
-    }
-
-    for (const row of (data ?? []) as Payment[]) {
-      paymentById.set(row.id, row);
-    }
-  }
-
-  // Include legacy BC-linked payments that may lack invoice_id.
-  if (businessCaseId) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select(
-        "id, business_case_id, invoice_id, amount, currency, status, payment_date, notes, created_at"
-      )
-      .eq("business_case_id", businessCaseId)
-      .order("payment_date", { ascending: false, nullsFirst: false });
-
-    if (error) {
-      // Column may be missing until K-03 migration — keep invoice-linked payments.
-      if (!/business_case_id|42703|PGRST204/i.test(error.message)) {
-        return {
-          summary: null,
-          invoices: null,
-          payments: null,
-          error: error.message,
-        };
-      }
-    } else {
-      for (const row of (data ?? []) as Payment[]) {
-        if (!paymentById.has(row.id)) {
-          paymentById.set(row.id, row);
-        }
-      }
-    }
-  }
-
-  const payments = [...paymentById.values()];
+  const db = await createClient();
+  const invoicesResult = await db.from("invoices")
+    .select("id,contract_id,invoice_number,amount,currency,status,due_date,paid_amount,outstanding,created_at")
+    .eq("contract_id", contractId).order("created_at", { ascending: false });
+  const fail = (error: string): ContractFinanceResult => ({ summary: null, invoices: null, payments: null, error });
+  if (invoicesResult.error) return fail(invoicesResult.error.message);
+  const invoices = invoicesResult.data ?? [];
+  const invoiceIds = invoices.map(row => row.id);
+  const allocations = invoiceIds.length
+    ? await db.from("payment_allocations").select("payment_id").in("invoice_id", invoiceIds)
+    : { data: [], error: null };
+  if (allocations.error) return fail(allocations.error.message);
+  const paymentIds = [...new Set((allocations.data ?? []).map(row => row.payment_id))];
+  // An allocation to another Contract does not attach every Deal payment here.
+  const paymentsResult = await db.from("payments")
+    .select("id,business_case_id,invoice_id,amount,currency,status,payment_date,notes,created_at")
+    .or(`contract_id.eq.${contractId}${invoiceIds.length ? `,invoice_id.in.(${invoiceIds.join(",")})` : ""}${paymentIds.length ? `,id.in.(${paymentIds.join(",")})` : ""}`)
+    .order("payment_date", { ascending: false, nullsFirst: false });
+  if (paymentsResult.error) return fail(paymentsResult.error.message);
+  const originalCurrency = currency ?? "USD";
+  // Summary is explicitly in the Contract currency; individual rows retain all
+  // original currencies. Settled allocation balances are the source of truth.
+  const matching = invoices.filter(row => row.currency === originalCurrency && row.status !== "Cancelled");
+  const paid = matching.reduce((sum, row) => sum + Number(row.paid_amount ?? 0), 0);
+  const outstanding = matching.reduce((sum, row) => sum + Number(row.outstanding ?? 0), 0);
   const amount = contractAmount ?? 0;
-  const paidFromPayments = sumPaidPayments(payments);
-  const paidFromInvoices = invoices.reduce(
-    (sum, invoice) => sum + (invoice.paid_amount ?? 0),
-    0
-  );
-  const paid = Math.max(paidFromPayments, paidFromInvoices);
-  const outstandingFromInvoices = invoices.reduce(
-    (sum, invoice) => sum + (invoice.outstanding ?? 0),
-    0
-  );
-
   return {
-    summary: {
-      contractAmount: amount,
-      paid,
-      remaining: Math.max(amount - paid, 0),
-      currency: currency ?? "USD",
-      invoiceCount: invoices.length,
-      paymentCount: payments.length,
-      outstanding: outstandingFromInvoices || Math.max(amount - paid, 0),
-    },
-    invoices,
-    payments,
-    error: null,
+    summary: { contractAmount: amount, paid, remaining: Math.max(amount - paid, 0),
+      currency: originalCurrency, invoiceCount: invoices.length,
+      paymentCount: paymentsResult.data?.length ?? 0, outstanding },
+    invoices, payments: paymentsResult.data ?? [], error: null,
   };
 }

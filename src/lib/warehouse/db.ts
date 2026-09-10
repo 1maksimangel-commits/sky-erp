@@ -13,9 +13,13 @@ export type WarehouseProductOption = {
   id: string;
   sku: string;
   name: string;
+  unit?: string | null;
 };
 
 export type InventoryLotRow = {
+  company_id: string;
+  owner_name: string;
+  unit: string | null;
   id: string;
   lot_number: string;
   production_date: string | null;
@@ -33,6 +37,7 @@ export type InventoryLotRow = {
 };
 
 export type WarehouseStats = {
+  unitTotals: { unit: string; totalStock: number; reserved: number; available: number }[];
   totalStock: number;
   reserved: number;
   available: number;
@@ -56,6 +61,11 @@ export type WarehouseBoardResult =
     };
 
 type InventoryRelation = {
+  product_name: string | null;
+  product_sku: string | null;
+  unit: string | null;
+  company_id: string;
+  owner: { name: string } | { name: string }[] | null;
   id: string;
   warehouse_id: string;
   product_id: string;
@@ -98,7 +108,7 @@ function normalizeLot(row: LotQueryRow): InventoryLotRow | null {
   }
 
   const warehouse = firstRelation(inventory.warehouse);
-  const product = firstRelation(inventory.product);
+  const product = firstRelation(inventory.product) || (inventory.product_name ? { id: inventory.product_id, name: inventory.product_name, sku: inventory.product_sku || "", unit: inventory.unit } : null);
   const lotQty = toNumber(row.quantity);
   const invAvailable = toNumber(inventory.available_quantity);
   const invReserved = toNumber(inventory.reserved_quantity);
@@ -111,6 +121,9 @@ function normalizeLot(row: LotQueryRow): InventoryLotRow | null {
     invTotal > 0 ? (lotQty / invTotal) * invAvailable : lotQty;
 
   return {
+    company_id: inventory.company_id,
+    owner_name: firstRelation(inventory.owner)?.name || "Unassigned owner",
+    unit: inventory.unit,
     id: row.id,
     lot_number: row.lot_number,
     production_date: row.production_date,
@@ -130,6 +143,7 @@ function normalizeLot(row: LotQueryRow): InventoryLotRow | null {
 
 function computeStatsFromInventory(
   rows: {
+    unit?: string | null;
     quantity: number | string | null;
     available_quantity: number | string | null;
     reserved_quantity: number | string | null;
@@ -139,6 +153,7 @@ function computeStatsFromInventory(
   let reserved = 0;
   let available = 0;
   let lowStock = 0;
+  const byUnit = new Map<string, { unit: string; totalStock: number; reserved: number; available: number }>();
 
   for (const item of rows) {
     const total = toNumber(item.quantity);
@@ -147,12 +162,17 @@ function computeStatsFromInventory(
     totalStock += total;
     reserved += res;
     available += avail;
+    const unit = item.unit || "unspecified unit";
+    const totals = byUnit.get(unit) || { unit, totalStock: 0, reserved: 0, available: 0 };
+    totals.totalStock += total; totals.reserved += res; totals.available += avail;
+    byUnit.set(unit, totals);
     if (avail > 0 && avail <= LOW_STOCK_THRESHOLD) {
       lowStock += 1;
     }
   }
 
   return {
+    unitTotals: Array.from(byUnit.values()),
     totalStock: Number(totalStock.toFixed(3)),
     reserved: Number(reserved.toFixed(3)),
     available: Number(available.toFixed(3)),
@@ -161,7 +181,7 @@ function computeStatsFromInventory(
 }
 
 const MISSING_SCHEMA_HINT =
-  "Warehouse schema is incomplete. Apply supabase/migrations/20260804170000_warehouse_module.sql in the Supabase SQL Editor, then reload the API schema.";
+  "Warehouse data is unavailable. Ask your administrator to verify the canonical database replay gate.";
 
 function formatLoadError(message: string): string {
   if (
@@ -194,15 +214,23 @@ export async function getWarehouseProductOptions(): Promise<
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, sku, name")
+    .select("id, sku, name, unit")
     .eq("is_active", true)
     .order("name");
 
   if (error) {
-    return [];
+    throw new Error(error.message);
   }
 
-  return data ?? [];
+  const ownedStock = await supabase.from("inventory").select("product_id, product_name, product_sku, unit");
+  if (ownedStock.error) throw new Error(ownedStock.error.message);
+  const options = new Map<string, WarehouseProductOption>((data || []).map((item) => [item.id, item]));
+  for (const item of ownedStock.data || []) {
+    if (!options.has(item.product_id) && item.product_name) options.set(item.product_id, { id: item.product_id, name: item.product_name, sku: item.product_sku || "", unit: item.unit });
+    const option = options.get(item.product_id);
+    if (option && item.unit) options.set(item.product_id, { ...option, unit: item.unit });
+  }
+  return Array.from(options.values());
 }
 
 export async function getWarehouseBoard(): Promise<WarehouseBoardResult> {
@@ -220,6 +248,11 @@ export async function getWarehouseBoard(): Promise<WarehouseBoardResult> {
         quantity,
         status,
         inventory:inventory_id (
+          product_name,
+          product_sku,
+          unit,
+          company_id,
+          owner:company_id ( name ),
           id,
           warehouse_id,
           product_id,
@@ -235,7 +268,7 @@ export async function getWarehouseBoard(): Promise<WarehouseBoardResult> {
       .order("lot_number", { ascending: true }),
     supabase
       .from("inventory")
-      .select("quantity, available_quantity, reserved_quantity"),
+      .select("quantity, available_quantity, reserved_quantity, unit"),
     getWarehouseLocations(),
     getWarehouseProductOptions(),
   ]);
@@ -291,6 +324,11 @@ export async function getWarehouseLotById(
       quantity,
       status,
       inventory:inventory_id (
+        product_name,
+        product_sku,
+        unit,
+        company_id,
+        owner:company_id ( name ),
         id,
         warehouse_id,
         product_id,

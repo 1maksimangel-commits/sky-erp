@@ -5,6 +5,7 @@ import { getActiveCounterparties } from "@/lib/counterparties";
 import { getProducts } from "@/lib/products";
 import { can } from "@/lib/platform/permissions";
 import { getContractOriginals } from "@/lib/contracts/import/actions";
+import { OperationalRecords } from "@/components/operations/OperationalRecords";
 
 export default async function ContractOverviewPage({
   params,
@@ -34,6 +35,7 @@ export default async function ContractOverviewPage({
       companies={companies ?? []}
       counterparties={counterparties ?? []}
     />
+    <OperationalRecords source={{ contractId: id }} />
     </>
   );
 }

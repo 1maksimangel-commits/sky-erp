@@ -7,6 +7,8 @@ const tabs: { href: string; label: string; exact?: boolean }[] = [
   { href: "/finance", label: "Dashboard", exact: true },
   { href: "/finance/invoices", label: "Invoices" },
   { href: "/finance/payments", label: "Payments" },
+  { href: "/finance/expenses", label: "Expenses" },
+  { href: "/finance/commissions", label: "Commissions" },
   { href: "/finance/bank-accounts", label: "Bank Accounts" },
   { href: "/finance/exchange-rates", label: "Exchange Rates" },
   { href: "/finance/reports", label: "Reports" },

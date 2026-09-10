@@ -83,6 +83,10 @@ function formatQty(value: number): string {
   }).format(value);
 }
 
+function formatStock(stats: WarehouseStats | null, key: "totalStock" | "reserved" | "available") {
+  return stats?.unitTotals.map((item) => `${formatQty(item[key])} ${item.unit}`).join(" · ") || "0";
+}
+
 export function WarehouseView({
   lots,
   stats,
@@ -101,6 +105,7 @@ export function WarehouseView({
   );
   const [toast, setToast] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<{
+    companyId?: string;
     warehouseId?: string;
     productId?: string;
     lotNumber?: string;
@@ -164,6 +169,7 @@ export function WarehouseView({
       row
         ? {
             warehouseId: row.warehouse_id,
+            companyId: row.company_id,
             productId: row.product_id,
             lotNumber: row.lot_number,
           }
@@ -244,6 +250,7 @@ export function WarehouseView({
           warehouses={warehouses}
           products={products}
           defaultWarehouseId={prefill.warehouseId}
+          defaultCompanyId={prefill.companyId}
           defaultProductId={prefill.productId}
           defaultLotNumber={prefill.lotNumber}
         />
@@ -256,17 +263,17 @@ export function WarehouseView({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Total Stock"
-          value={formatQty(stats?.totalStock ?? 0)}
+          value={formatStock(stats, "totalStock")}
           icon={<Boxes className="h-4 w-4" />}
         />
         <KpiCard
           title="Reserved"
-          value={formatQty(stats?.reserved ?? 0)}
+          value={formatStock(stats, "reserved")}
           icon={<MinusCircle className="h-4 w-4" />}
         />
         <KpiCard
           title="Available"
-          value={formatQty(stats?.available ?? 0)}
+          value={formatStock(stats, "available")}
           icon={<PackagePlus className="h-4 w-4" />}
         />
         <KpiCard
@@ -397,6 +404,7 @@ export function WarehouseView({
                     <td className="px-4 py-3">
                       <p className="text-foreground">
                         {item.warehouse?.name ?? "—"}
+                        <span className="block text-xs text-muted-foreground">Owner: {item.owner_name}</span>
                       </p>
                       <p className="font-mono text-xs text-muted-foreground">
                         {item.warehouse?.code ?? "—"}
@@ -413,7 +421,7 @@ export function WarehouseView({
                     </td>
                     <td className="px-4 py-3">{formatQty(item.available)}</td>
                     <td className="px-4 py-3">{formatQty(item.reserved)}</td>
-                    <td className="px-4 py-3">{formatQty(item.total)}</td>
+                    <td className="px-4 py-3">{formatQty(item.total)} {item.unit}</td>
                     <td className="px-4 py-3">
                       {formatWarehouseDate(item.expiry_date)}
                     </td>

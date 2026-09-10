@@ -35,6 +35,7 @@ export type InvoiceItemInput = {
 };
 
 export type InvoiceFormInput = {
+  generated_document_id?: string | null;
   invoice_number: string;
   invoice_type: string;
   contract_id: string;
@@ -65,6 +66,9 @@ export type PaymentFormInput = {
 };
 
 export type BankAccountFormInput = {
+  counterparty_id?: string | null;
+  account_holder?: string | null;
+  correspondent_details?: string | null;
   company_id: string;
   name: string;
   bank_name: string | null;

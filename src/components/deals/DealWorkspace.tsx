@@ -4,7 +4,7 @@ import { contractDirection, partyName } from "@/lib/contracts/parties";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { AlertTriangle, Loader2, Plus, Save } from "lucide-react";
+import { Loader2, Plus, Save } from "lucide-react";
 import { EntityDocumentsPanel } from "@/components/platform/EntityDocumentsPanel";
 import { EntityTimelinePanel } from "@/components/platform/EntityTimelinePanel";
 import { EntityActivityPanel } from "@/components/platform/EntityActivityPanel";
@@ -15,23 +15,20 @@ import type { Counterparty } from "@/lib/counterparties";
 import type { Product } from "@/lib/products";
 import { lineAmount } from "@/lib/core/validation";
 import { updateDealProduct, removeDealProduct, addDealParticipant, addDealProduct, classifyDealContract, updateDeal } from "@/lib/deals/actions";
-import { DEAL_CONTRACT_ROLES, DEAL_PARTICIPANT_ROLES, DEAL_STATUSES, type CurrencyAmount, type DealFormInput, type DealWorkspaceData } from "@/lib/deals/types";
+import { DEAL_CONTRACT_ROLES, DEAL_PARTICIPANT_ROLES, DEAL_STATUSES, type DealFormInput, type DealWorkspaceData } from "@/lib/deals/types";
 
-type Tab = "overview" | "participants" | "products" | "contracts" | "documents" | "logistics" | "finance" | "history";
+type Tab = "overview" | "participants" | "products" | "contracts" | "documents" | "logistics" | "operations" | "history";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" }, { id: "participants", label: "Participants" },
   { id: "products", label: "Products" }, { id: "contracts", label: "Contracts" },
   { id: "documents", label: "Documents" }, { id: "logistics", label: "Logistics" },
-  { id: "finance", label: "Finance" }, { id: "history", label: "History" },
+  { id: "history", label: "History" },
+  { id: "operations", label: "Operations" },
 ];
 const inputClass = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label><span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>{children}</label>;
-}
-
-function moneyList(items: CurrencyAmount[]): string {
-  return items.length ? items.map(({ amount, currency }) => `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`).join(" + ") : "—";
 }
 
 function toNumber(value: string): number | null {
@@ -112,17 +109,7 @@ function Logistics({ data }: { data: DealWorkspaceData }) {
   return <div className="space-y-3"><div className="flex justify-end"><Link href="/logistics?new=1" className="rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background">Create shipment</Link></div>{data.shipments.map((item) => <Link key={item.id} href={`/logistics/${item.id}`} className="grid gap-3 rounded-lg border border-card-border bg-card p-4 hover:bg-accent/20 sm:grid-cols-5"><span>{item.container ?? "No container"}</span><span>B/L {item.bl_number ?? "—"}</span><span>{item.vessel ?? "—"}</span><span>ETA {item.eta ?? "—"}</span><span>{item.status ?? "—"}</span></Link>)}{!data.shipments.length ? <p className="rounded-lg border border-card-border bg-card p-8 text-center text-sm text-muted-foreground">No shipments linked.</p> : null}</div>;
 }
 
-function Finance({ data }: { data: DealWorkspaceData }) {
-  const finance = data.finance;
-  const sales = finance.sales.reduce((sum, item) => sum + item.amount, 0);
-  const purchase = finance.purchase.reduce((sum, item) => sum + item.amount, 0);
-  const sameCurrency = finance.sales.length === 1 && finance.purchase.length === 1 && finance.sales[0].currency === finance.purchase[0].currency;
-  const gross = sameCurrency ? sales - purchase : null;
-  const quantity = data.products.reduce((sum, item) => sum + (item.net_weight ?? item.quantity), 0);
-  return <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><Card label="Purchase value" value={moneyList(finance.purchase)} /><Card label="Sales value" value={moneyList(finance.sales)} /><Card label="Gross trading profit" value={gross == null ? "Incomplete" : `${gross.toLocaleString()} ${finance.sales[0].currency}`} /><Card label="Expected expenses" value={moneyList(finance.expenses)} /><Card label="Expected commission" value={moneyList(finance.commissions)} note={data.commissionsCount ? `${data.commissionsCount} linked` : "Commission Engine planned"} /><Card label="Expected profit" value={finance.expectedProfit ? moneyList([finance.expectedProfit]) : "Incomplete"} note={finance.incompleteReason ?? undefined} /><Card label="Profit per kg" value={gross != null && quantity > 0 ? `${(gross / quantity).toFixed(2)} ${finance.sales[0].currency}/kg` : "Incomplete"} /></div>{finance.profitIncomplete ? <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200"><AlertTriangle className="h-4 w-4 shrink-0" /><p>Profit is not calculated across currencies. Values remain separate until an explicit FX rate is available.</p></div> : null}<div className="flex gap-2"><Link href="/finance/invoices" className="rounded-md border border-border px-3.5 py-2 text-xs">Invoices</Link><Link href="/finance/payments" className="rounded-md border border-border px-3.5 py-2 text-xs">Payments</Link></div></div>;
-}
-
-export function DealWorkspace({ data, documents, documentUrls, timeline, activity, counterparties, products }: { data: DealWorkspaceData; documents: ErpDocument[]; documentUrls: Record<string, string>; timeline: TimelineEvent[]; activity: ActivityEntry[]; counterparties: Counterparty[]; products: Product[] }) {
+export function DealWorkspace({ data, documents, documentUrls, timeline, activity, counterparties, products, operations }: { data: DealWorkspaceData; documents: ErpDocument[]; documentUrls: Record<string, string>; timeline: TimelineEvent[]; activity: ActivityEntry[]; counterparties: Counterparty[]; products: Product[]; operations: React.ReactNode }) {
   const [tab, setTab] = useState<Tab>("overview");
   let content: React.ReactNode;
   if (tab === "overview") content = <DealOverview data={data} />;
@@ -131,7 +118,7 @@ export function DealWorkspace({ data, documents, documentUrls, timeline, activit
   else if (tab === "contracts") content = <Contracts data={data} />;
   else if (tab === "documents") content = <EntityDocumentsPanel entityType="business_case" entityId={data.deal.id} documents={documents} urls={documentUrls} businessCaseId={data.deal.id} companyId={data.deal.company_id} />;
   else if (tab === "logistics") content = <Logistics data={data} />;
-  else if (tab === "finance") content = <Finance data={data} />;
+  else if (tab === "operations") content = operations;
   else content = <div className="grid gap-5 xl:grid-cols-2"><EntityTimelinePanel entityType="business_case" entityId={data.deal.id} events={timeline} /><EntityActivityPanel entries={activity} /></div>;
   return <div className="space-y-6"><nav className="text-sm"><Link href="/business-cases" className="text-muted-foreground hover:text-foreground">Deals</Link><span className="mx-2 text-muted-foreground">/</span><span className="font-mono text-xs">{data.deal.case_number}</span></nav><div><div className="flex items-center gap-3"><h2 className="font-mono text-lg font-semibold">{data.deal.case_number}</h2><span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-zinc-500/20">{data.deal.status ?? "Draft"}</span></div><p className="mt-1 text-sm text-muted-foreground">{data.deal.title ?? "Canonical Deal"}</p></div>{data.schemaWarnings.length ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4"><p className="text-sm font-medium text-amber-200">Compatibility mode</p><ul className="mt-2 list-disc pl-5 text-xs text-amber-100/80">{data.schemaWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}<div className="flex flex-wrap gap-1 border-b border-border pb-3">{TABS.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60"}`}>{item.label}</button>)}</div>{content}</div>;
 }

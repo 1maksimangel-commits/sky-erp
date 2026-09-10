@@ -2,12 +2,10 @@
 
 import { AlertCircle, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { createInvoice } from "@/lib/finance/actions";
+import { createInvoice, updateInvoice } from "@/lib/finance/actions";
 import type { FinanceOptionBundles } from "@/lib/finance/db";
 import {
   FINANCE_CURRENCIES,
-  INVOICE_STATUSES,
-  INVOICE_TYPES,
   emptyInvoiceForm,
   type InvoiceFormInput,
   type InvoiceItemInput,
@@ -20,6 +18,8 @@ type InvoiceFormModalProps = {
   onClose: () => void;
   onSaved: () => void;
   options: FinanceOptionBundles;
+  invoiceId?: string;
+  initial?: InvoiceFormInput;
 };
 
 type FormState = {
@@ -151,8 +151,10 @@ export function InvoiceFormModal({
   onClose,
   onSaved,
   options,
+  invoiceId,
+  initial,
 }: InvoiceFormModalProps) {
-  const [form, setForm] = useState<FormState>(() => toFormState(emptyInvoiceForm()));
+  const [form, setForm] = useState<FormState>(() => toFormState(initial ?? emptyInvoiceForm()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,8 +174,7 @@ export function InvoiceFormModal({
     if (!contract) return options.businessCases;
     return options.businessCases.filter(
       (item) =>
-        !item.contract_number ||
-        item.contract_number === contract.contract_number
+        item.id === contract.business_case_id
     );
   }, [form.contract_id, options.businessCases, options.contracts]);
 
@@ -191,7 +192,7 @@ export function InvoiceFormModal({
   }, [form.items]);
 
   useResetWhenOpened(open, () => {
-    setForm(toFormState(emptyInvoiceForm()));
+    setForm(toFormState(initial ?? emptyInvoiceForm()));
     setError(null);
   });
 
@@ -240,7 +241,7 @@ export function InvoiceFormModal({
 
     setSaving(true);
     setError(null);
-    const result = await createInvoice(input);
+    const result = invoiceId ? await updateInvoice(invoiceId, input) : await createInvoice(input);
     setSaving(false);
 
     if (!result.success) {
@@ -267,9 +268,9 @@ export function InvoiceFormModal({
       >
         <div className="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6">
           <div>
-            <h2 className="text-base font-semibold text-foreground">Create Invoice</h2>
+            <h2 className="text-base font-semibold text-foreground">{invoiceId ? "Edit Draft Invoice" : "Create Invoice"}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Link commercial documents to contracts and business cases
+              Record an obligation linked to its Contract and Deal
             </p>
           </div>
           <button
@@ -300,26 +301,14 @@ export function InvoiceFormModal({
                     onChange={(e) => updateField("invoice_number", e.target.value)}
                   />
                 </Field>
-                <Field label="Type" required>
-                  <select
-                    className={inputClassName}
-                    value={form.invoice_type}
-                    onChange={(e) => updateField("invoice_type", e.target.value)}
-                  >
-                    {INVOICE_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <p className="text-sm text-muted-foreground">Issuer and recipient come from the selected Contract. Direction is relative to the selected company.</p>
                 <Field label="Status" required>
                   <select
                     className={inputClassName}
                     value={form.status}
                     onChange={(e) => updateField("status", e.target.value)}
                   >
-                    {INVOICE_STATUSES.map((status) => (
+                    {["Draft", "Issued"].map((status) => (
                       <option key={status} value={status}>
                         {status}
                       </option>
@@ -356,9 +345,9 @@ export function InvoiceFormModal({
                       setForm((current) => ({
                         ...current,
                         contract_id: e.target.value,
-                        business_case_id: "",
+                        business_case_id: contract?.business_case_id ?? "",
                         shipment_id: "",
-                        company_id: contract?.company_id ?? current.company_id,
+                        company_id: current.company_id || contract?.company_id || "",
                         buyer_id: contract?.buyer_id ?? current.buyer_id,
                         supplier_id: contract?.supplier_id ?? current.supplier_id,
                         currency: contract?.currency ?? current.currency,
@@ -404,34 +393,10 @@ export function InvoiceFormModal({
                     ))}
                   </select>
                 </Field>
-                <Field label="Buyer">
-                  <select
-                    className={inputClassName}
-                    value={form.buyer_id}
-                    onChange={(e) => updateField("buyer_id", e.target.value)}
-                  >
-                    <option value="">Select buyer</option>
-                    {options.counterparties.map((party) => (
-                      <option key={party.id} value={party.id}>
-                        {party.legal_name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Supplier">
-                  <select
-                    className={inputClassName}
-                    value={form.supplier_id}
-                    onChange={(e) => updateField("supplier_id", e.target.value)}
-                  >
-                    <option value="">Select supplier</option>
-                    {options.counterparties.map((party) => (
-                      <option key={party.id} value={party.id}>
-                        {party.legal_name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <p className="text-sm sm:col-span-2">
+                  {options.contracts.find(c => c.id === form.contract_id)?.parties.map(p =>
+                    p.role_code === "seller" || p.role_code === "buyer" ? <span className="mr-4" key={p.role_code}>{p.role_code === "seller" ? "Issuer" : "Recipient"}: {p.snapshot.legal_name ?? "Review Contract party"}</span> : null)}
+                </p>
               </div>
             </Section>
 
@@ -651,7 +616,7 @@ export function InvoiceFormModal({
                   Saving...
                 </>
               ) : (
-                "Create Invoice"
+                "Save Invoice"
               )}
             </button>
           </div>

@@ -28,6 +28,9 @@ export function BankAccountsView({
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     company_id: "",
+    counterparty_id: "",
+    account_holder: "",
+    correspondent_details: "",
     name: "",
     bank_name: "",
     bank_address: "",
@@ -57,6 +60,9 @@ export function BankAccountsView({
     const result = await createBankAccount({
       ...emptyBankAccountForm(),
       company_id: form.company_id,
+      counterparty_id: form.counterparty_id || null,
+      account_holder: form.account_holder || null,
+      correspondent_details: form.correspondent_details || null,
       name: form.name,
       bank_name: form.bank_name || null,
       bank_address: form.bank_address || null,
@@ -84,7 +90,7 @@ export function BankAccountsView({
     <div className={`space-y-4 ${isPending ? "opacity-70" : ""}`}>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Multi-company operating accounts (ALTAY FISH, ORDA FZCO, MAREX CARGO, …)
+          Company operating accounts and scoped counterparty bank details
         </p>
         <button
           type="button"
@@ -121,6 +127,11 @@ export function BankAccountsView({
               </option>
             ))}
           </select>
+          <select value={form.counterparty_id} onChange={e => setForm(c => ({ ...c, counterparty_id: e.target.value }))} className="rounded-md border border-border bg-background px-3 py-2 text-sm">
+            <option value="">Internal company account</option>{options.counterparties.map(p => <option key={p.id} value={p.id}>{p.legal_name}</option>)}
+          </select>
+          <input placeholder="Account holder" value={form.account_holder} onChange={e => setForm(c => ({ ...c, account_holder: e.target.value }))} className="rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          <input placeholder="Correspondent bank details" value={form.correspondent_details} onChange={e => setForm(c => ({ ...c, correspondent_details: e.target.value }))} className="rounded-md border border-border bg-background px-3 py-2 text-sm" />
           <input
             required
             placeholder="Account name *"

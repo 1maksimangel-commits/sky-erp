@@ -171,11 +171,7 @@ export function ShipmentFormModal({
       return businessCases;
     }
 
-    return businessCases.filter(
-      (item) =>
-        !item.contract_number ||
-        item.contract_number === contract.contract_number
-    );
+    return contract.business_case_id ? businessCases.filter(item => item.id === contract.business_case_id) : businessCases;
   }, [businessCases, contracts, form.contract_id]);
 
   useResetWhenOpened(open, () => {
@@ -188,7 +184,7 @@ export function ShipmentFormModal({
     );
     setForm({
       ...base,
-      company_id: base.company_id || contract?.company_id || "",
+      company_id: base.company_id || contract?.shipment_company_id || contract?.company_id || "",
       business_case_id:
         base.business_case_id || contract?.business_case_id || "",
     });
@@ -343,7 +339,7 @@ export function ShipmentFormModal({
                       ...current,
                       contract_id: contractId,
                       business_case_id: contract?.business_case_id ?? "",
-                      company_id: contract?.company_id ?? "",
+                      company_id: contract?.shipment_company_id ?? contract?.company_id ?? "",
                     }));
                     setError(null);
                   }}
@@ -369,6 +365,7 @@ export function ShipmentFormModal({
                   className={inputClassName}
                 >
                   <option value="">Select business case</option>
+                  {form.business_case_id && !filteredBusinessCases.some(item => item.id === form.business_case_id) && <option value={form.business_case_id}>Linked contract Deal</option>}
                   {filteredBusinessCases.map((businessCase) => (
                     <option key={businessCase.id} value={businessCase.id}>
                       {businessCase.case_number}

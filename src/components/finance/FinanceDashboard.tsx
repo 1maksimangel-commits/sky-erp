@@ -4,11 +4,8 @@ import {
   AlertCircle,
   Banknote,
   Building2,
-  CircleDollarSign,
   Landmark,
   Receipt,
-  TrendingUp,
-  Wallet,
 } from "lucide-react";
 import type { FinanceDashboardStats } from "@/lib/finance/db";
 import { formatMoney } from "@/lib/finance/format";
@@ -59,48 +56,19 @@ export function FinanceDashboard({ stats, error }: FinanceDashboardProps) {
     );
   }
 
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard
-        title="Total Revenue"
-        value={formatMoney(stats?.totalRevenue ?? 0)}
-        icon={<TrendingUp className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Accounts Receivable"
-        value={formatMoney(stats?.accountsReceivable ?? 0)}
-        icon={<Receipt className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Accounts Payable"
-        value={formatMoney(stats?.accountsPayable ?? 0)}
-        icon={<Building2 className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Cash"
-        value={formatMoney(stats?.cash ?? 0)}
-        icon={<Wallet className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Bank Balance"
-        value={formatMoney(stats?.bankBalance ?? 0)}
-        icon={<Landmark className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Expenses"
-        value={formatMoney(stats?.expenses ?? 0)}
-        icon={<Banknote className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Profit"
-        value={formatMoney(stats?.profit ?? 0)}
-        icon={<CircleDollarSign className="h-4 w-4" />}
-      />
-      <KpiCard
-        title="Overdue Payments"
-        value={String(stats?.overduePayments ?? 0)}
-        icon={<AlertCircle className="h-4 w-4" />}
-      />
-    </div>
-  );
+  if (!stats?.companyId) return <p className="text-sm text-muted-foreground">Select an internal company in Settings to view its financial position.</p>;
+  return <div className="space-y-5">
+    <p className="text-sm text-muted-foreground">Selected company perspective. Original currencies are shown separately; no FX conversion or Deal profit is calculated.</p>
+    {stats.unreviewedInvoices > 0 && <p className="text-sm text-muted-foreground">{stats.unreviewedInvoices} legacy invoice(s) require explicit party review before inclusion.</p>}
+    {stats.currencies.map(row => <section key={row.currency} className="space-y-3">
+      <h2 className="font-semibold">{row.currency}</h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiCard title="Invoice amount" value={formatMoney(row.invoiceAmount,row.currency)} icon={<Receipt className="h-4 w-4" />} />
+        <KpiCard title="Receivable" value={formatMoney(row.receivable,row.currency)} icon={<Receipt className="h-4 w-4" />} />
+        <KpiCard title="Payable" value={formatMoney(row.payable,row.currency)} icon={<Building2 className="h-4 w-4" />} />
+        <KpiCard title="Bank balance" value={formatMoney(row.bankBalance,row.currency)} icon={<Landmark className="h-4 w-4" />} />
+        <KpiCard title="Posted expenses" value={formatMoney(row.expenses,row.currency)} icon={<Banknote className="h-4 w-4" />} />
+      </div>
+    </section>)}
+  </div>;
 }

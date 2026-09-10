@@ -7,6 +7,7 @@ create function pg_temp.assert_true(ok boolean, message text) returns void langu
 begin if ok is distinct from true then raise exception 'Auth/RLS assertion: %', message; end if; end $$;
 create temporary table private_tables(name text primary key);
 insert into private_tables values ('counterparties'),('products'),('business_cases'),('contracts'),('shipments'),('invoices'),('payments'),('accounts'),('bank_accounts'),('bank_transactions'),('expenses'),('contract_products'),('contract_parties'),('shipment_timeline_events'),('warehouse_locations'),('inventory'),('inventory_lots'),('stock_movements'),('warehouse_transfers'),('inventory_reservations'),('invoice_items'),('payment_allocations'),('documents'),('document_versions'),('contract_imports'),('contract_import_field_reviews'),('crm_customers'),('crm_contacts'),('crm_notes'),('crm_communications'),('crm_tasks'),('crm_timeline_events'),('crm_attachments'),('deal_participants'),('deal_products'),('deal_commission_links'),('document_templates'),('generated_documents'),('template_mappings'),('document_generation_batches'),('notifications'),('timeline_events'),('activity_log');
+insert into private_tables values ('shipment_lines');
 grant select on private_tables to authenticated, anon;
 
 -- Fail when a future table is added without a fixture and an explicit classification.
@@ -14,7 +15,7 @@ do $$ declare t record; op text; begin
   for t in select c.oid,c.relname,c.relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind in ('r','p') loop
     perform pg_temp.assert_true(t.relrowsecurity,'RLS disabled: ' || t.relname);
-    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories')
+    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories','warehouse_company_access')
       or exists(select 1 from private_tables where name=t.relname),'Unclassified table: ' || t.relname);
     foreach op in array array['SELECT','INSERT','UPDATE','DELETE'] loop
       perform pg_temp.assert_true(not has_table_privilege('anon',t.oid,op),'Anonymous grant: ' || t.relname || ' ' || op);
@@ -97,18 +98,33 @@ begin
   delete from public.shipments where id=pg_temp.fixture_id(tag,'shipments');
   perform pg_temp.assert_true(found,'Own DELETE shipments');
   insert into public.shipments(id,company_id,contract_id) values (pg_temp.fixture_id(tag,'shipments'),company,pg_temp.fixture_id(tag,'contracts'));
+  insert into public.shipment_lines(id,company_id,shipment_id,product_id,description,quantity,unit)
+    values(pg_temp.fixture_id(tag,'shipment_lines'),company,pg_temp.fixture_id(tag,'shipments'),pg_temp.fixture_id(tag,'products'),'Fictional shipment product',1,'MT');
+  update public.shipment_lines set quantity=2 where id=pg_temp.fixture_id(tag,'shipment_lines');
+  perform pg_temp.assert_true(found,'Own UPDATE shipment_lines');
+  delete from public.shipment_lines where id=pg_temp.fixture_id(tag,'shipment_lines');
+  perform pg_temp.assert_true(found,'Own DELETE shipment_lines');
+  insert into public.shipment_lines(id,company_id,shipment_id,product_id,description,quantity,unit)
+    values(pg_temp.fixture_id(tag,'shipment_lines'),company,pg_temp.fixture_id(tag,'shipments'),pg_temp.fixture_id(tag,'products'),'Fictional shipment product',1,'MT');
+  insert into public.contract_parties(company_id,contract_id,role_code,internal_company_id,snapshot)
+    values(company,pg_temp.fixture_id(tag,'contracts'),'seller',company,'{"legal_name":"Fictional internal issuer"}');
+  insert into public.contract_parties(company_id,contract_id,role_code,counterparty_id,snapshot)
+    values(company,pg_temp.fixture_id(tag,'contracts'),'buyer',pg_temp.fixture_id(tag,'counterparties'),'{"legal_name":"Fictional external recipient"}');
   insert into public.invoices(id,company_id,contract_id,invoice_number,amount,outstanding) values (pg_temp.fixture_id(tag,'invoices'),company,pg_temp.fixture_id(tag,'contracts'),'Fictional-' || tag || '-invoice_number',100,100);
   update public.invoices set id=id where id=pg_temp.fixture_id(tag,'invoices');
   perform pg_temp.assert_true(found,'Own UPDATE invoices');
-  delete from public.invoices where id=pg_temp.fixture_id(tag,'invoices');
-  perform pg_temp.assert_true(found,'Own DELETE invoices');
-  insert into public.invoices(id,company_id,contract_id,invoice_number,amount,outstanding) values (pg_temp.fixture_id(tag,'invoices'),company,pg_temp.fixture_id(tag,'contracts'),'Fictional-' || tag || '-invoice_number',100,100);
-  insert into public.payments(id,company_id) values (pg_temp.fixture_id(tag,'payments'),company);
+  begin
+    delete from public.invoices where id=pg_temp.fixture_id(tag,'invoices');
+    raise exception 'Invoice history deletion accepted' using errcode='23514';
+  exception when raise_exception then perform pg_temp.assert_true(sqlerrm='Cancel financial obligations instead of deleting history','Invoice retention guard'); end;
+  insert into public.payments(id,company_id,amount,currency,status,payer_counterparty_id,payee_company_id)
+    values(pg_temp.fixture_id(tag,'payments'),company,100,'USD','Pending',pg_temp.fixture_id(tag,'counterparties'),company);
   update public.payments set id=id where id=pg_temp.fixture_id(tag,'payments');
   perform pg_temp.assert_true(found,'Own UPDATE payments');
-  delete from public.payments where id=pg_temp.fixture_id(tag,'payments');
-  perform pg_temp.assert_true(found,'Own DELETE payments');
-  insert into public.payments(id,company_id) values (pg_temp.fixture_id(tag,'payments'),company);
+  begin
+    delete from public.payments where id=pg_temp.fixture_id(tag,'payments');
+    raise exception 'Payment history deletion accepted' using errcode='23514';
+  exception when raise_exception then perform pg_temp.assert_true(sqlerrm='Cancel payment instead of deleting its history','Payment retention guard'); end;
   insert into public.accounts(id,company_id,account_type,code,name) values (pg_temp.fixture_id(tag,'accounts'),company,'Asset','Fictional-' || tag || '-code','Fictional-' || tag || '-name');
   update public.accounts set id=id where id=pg_temp.fixture_id(tag,'accounts');
   perform pg_temp.assert_true(found,'Own UPDATE accounts');
@@ -164,12 +180,17 @@ begin
   delete from public.inventory_lots where id=pg_temp.fixture_id(tag,'inventory_lots');
   perform pg_temp.assert_true(found,'Own DELETE inventory_lots');
   insert into public.inventory_lots(id,company_id,inventory_id,lot_number) values (pg_temp.fixture_id(tag,'inventory_lots'),company,pg_temp.fixture_id(tag,'inventory'),'Fictional-' || tag || '-lot_number');
-  insert into public.stock_movements(id,company_id,movement_type,product_id,quantity,warehouse_id) values (pg_temp.fixture_id(tag,'stock_movements'),company,'inbound',pg_temp.fixture_id(tag,'products'),1,pg_temp.fixture_id(tag,'warehouse_locations'));
+  insert into public.stock_movements(id,company_id,movement_type,product_id,quantity,warehouse_id,lot_number) values (pg_temp.fixture_id(tag,'stock_movements'),company,'inbound',pg_temp.fixture_id(tag,'products'),1,pg_temp.fixture_id(tag,'warehouse_locations'),'Fictional-' || tag || '-lot_number');
   update public.stock_movements set id=id where id=pg_temp.fixture_id(tag,'stock_movements');
   perform pg_temp.assert_true(found,'Own UPDATE stock_movements');
-  delete from public.stock_movements where id=pg_temp.fixture_id(tag,'stock_movements');
-  perform pg_temp.assert_true(found,'Own DELETE stock_movements');
-  insert into public.stock_movements(id,company_id,movement_type,product_id,quantity,warehouse_id) values (pg_temp.fixture_id(tag,'stock_movements'),company,'inbound',pg_temp.fixture_id(tag,'products'),1,pg_temp.fixture_id(tag,'warehouse_locations'));
+  begin
+    delete from public.stock_movements where id=pg_temp.fixture_id(tag,'stock_movements');
+    raise exception 'Stock movement deletion accepted';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.inventory set quantity=99,available_quantity=99 where id=pg_temp.fixture_id(tag,'inventory');
+    raise exception 'Direct balance editing accepted';
+  exception when insufficient_privilege then null; end;
   insert into public.warehouse_transfers(id,company_id,from_location,product_id,quantity,to_location) values (pg_temp.fixture_id(tag,'warehouse_transfers'),company,pg_temp.fixture_id(tag,'warehouse_locations'),pg_temp.fixture_id(tag,'products'),1,pg_temp.fixture_id(tag,'warehouse_other'));
   update public.warehouse_transfers set id=id where id=pg_temp.fixture_id(tag,'warehouse_transfers');
   perform pg_temp.assert_true(found,'Own UPDATE warehouse_transfers');
@@ -182,12 +203,12 @@ begin
   delete from public.inventory_reservations where id=pg_temp.fixture_id(tag,'inventory_reservations');
   perform pg_temp.assert_true(found,'Own DELETE inventory_reservations');
   insert into public.inventory_reservations(id,company_id,inventory_id,quantity) values (pg_temp.fixture_id(tag,'inventory_reservations'),company,pg_temp.fixture_id(tag,'inventory'),1);
-  insert into public.invoice_items(id,company_id,description,invoice_id) values (pg_temp.fixture_id(tag,'invoice_items'),company,'Fictional-' || tag || '-description',pg_temp.fixture_id(tag,'invoices'));
+  insert into public.invoice_items(id,company_id,description,invoice_id,unit_price) values (pg_temp.fixture_id(tag,'invoice_items'),company,'Fictional-' || tag || '-description',pg_temp.fixture_id(tag,'invoices'),100);
   update public.invoice_items set id=id where id=pg_temp.fixture_id(tag,'invoice_items');
   perform pg_temp.assert_true(found,'Own UPDATE invoice_items');
   delete from public.invoice_items where id=pg_temp.fixture_id(tag,'invoice_items');
   perform pg_temp.assert_true(found,'Own DELETE invoice_items');
-  insert into public.invoice_items(id,company_id,description,invoice_id) values (pg_temp.fixture_id(tag,'invoice_items'),company,'Fictional-' || tag || '-description',pg_temp.fixture_id(tag,'invoices'));
+  insert into public.invoice_items(id,company_id,description,invoice_id,unit_price) values (pg_temp.fixture_id(tag,'invoice_items'),company,'Fictional-' || tag || '-description',pg_temp.fixture_id(tag,'invoices'),100);
   insert into public.payment_allocations(id,company_id,amount,invoice_id,payment_id) values (pg_temp.fixture_id(tag,'payment_allocations'),company,1,pg_temp.fixture_id(tag,'invoices'),pg_temp.fixture_id(tag,'payments'));
   update public.payment_allocations set id=id where id=pg_temp.fixture_id(tag,'payment_allocations');
   perform pg_temp.assert_true(found,'Own UPDATE payment_allocations');
@@ -272,12 +293,12 @@ begin
   delete from public.deal_products where id=pg_temp.fixture_id(tag,'deal_products');
   perform pg_temp.assert_true(found,'Own DELETE deal_products');
   insert into public.deal_products(id,company_id,business_case_id,quantity,unit) values (pg_temp.fixture_id(tag,'deal_products'),company,pg_temp.fixture_id(tag,'business_cases'),1,'Fictional-' || tag || '-unit');
-  insert into public.deal_commission_links(id,company_id,business_case_id) values (pg_temp.fixture_id(tag,'deal_commission_links'),company,pg_temp.fixture_id(tag,'business_cases'));
+  insert into public.deal_commission_links(id,company_id,business_case_id,basis,rate,currency) values (pg_temp.fixture_id(tag,'deal_commission_links'),company,pg_temp.fixture_id(tag,'business_cases'),'fixed',0,'USD');
   update public.deal_commission_links set id=id where id=pg_temp.fixture_id(tag,'deal_commission_links');
   perform pg_temp.assert_true(found,'Own UPDATE deal_commission_links');
   delete from public.deal_commission_links where id=pg_temp.fixture_id(tag,'deal_commission_links');
   perform pg_temp.assert_true(found,'Own DELETE deal_commission_links');
-  insert into public.deal_commission_links(id,company_id,business_case_id) values (pg_temp.fixture_id(tag,'deal_commission_links'),company,pg_temp.fixture_id(tag,'business_cases'));
+  insert into public.deal_commission_links(id,company_id,business_case_id,basis,rate,currency) values (pg_temp.fixture_id(tag,'deal_commission_links'),company,pg_temp.fixture_id(tag,'business_cases'),'fixed',0,'USD');
   insert into public.document_templates(id,company_id,document_type,name,template_content) values (pg_temp.fixture_id(tag,'document_templates'),company,'contract','Fictional-' || tag || '-name','{{contract_number}}');
   update public.document_templates set id=id where id=pg_temp.fixture_id(tag,'document_templates');
   perform pg_temp.assert_true(found,'Own UPDATE document_templates');
@@ -391,7 +412,10 @@ select set_config('request.jwt.claim.sub',pg_temp.fixture_id('A','user')::text,t
 select public.log_activity('contract',pg_temp.fixture_id('A','contracts'),'created','Fictional authenticated test');
 select public.add_timeline_event('contract',pg_temp.fixture_id('A','contracts'),'created','Fictional authenticated test');
 select public.create_notification('Fictional authenticated test');
-select public.finance_register_payment(pg_temp.fixture_id('A','invoices'),20,'USD',date '2026-01-01');
+insert into public.invoices(id,company_id,contract_id,invoice_number,issuer_company_id,recipient_counterparty_id,party_snapshot)
+values(pg_temp.fixture_id('A','rpc_invoice'),pg_temp.fixture_id('A','companies'),pg_temp.fixture_id('A','contracts'),'Fictional RPC obligation',pg_temp.fixture_id('A','companies'),pg_temp.fixture_id('A','counterparties'),'{"issuer":{"legal_name":"Fictional A"},"recipient":{"legal_name":"Fictional external customer"}}');
+insert into public.invoice_items(invoice_id,description,quantity,unit_price) values(pg_temp.fixture_id('A','rpc_invoice'),'Fictional obligation line',1,100);
+select public.finance_register_payment(pg_temp.fixture_id('A','rpc_invoice'),20,'USD',date '2026-01-01');
 select public.warehouse_receive_stock(pg_temp.fixture_id('A','warehouse_locations'),pg_temp.fixture_id('A','products'),10,'AUTH-LOT');
 select public.warehouse_issue_stock(pg_temp.fixture_id('A','warehouse_locations'),pg_temp.fixture_id('A','products'),2,'AUTH-LOT');
 select public.warehouse_transfer_stock(pg_temp.fixture_id('A','warehouse_locations'),pg_temp.fixture_id('A','warehouse_other'),pg_temp.fixture_id('A','products'),3,'AUTH-LOT');

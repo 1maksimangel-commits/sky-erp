@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getBusinessCaseIdForContract } from "@/lib/contracts/relations";
 import type { ContractDocument } from "@/lib/contracts/document-types";
 import { filterOwnedDocumentsForSigning } from "@/lib/documents/signed-url-auth";
 import { assertCan } from "@/lib/platform/permissions";
@@ -13,7 +12,7 @@ export type ContractDocumentsResult =
   | { data: null; error: string };
 
 export async function getContractDocuments(
-  contractNumber: string,
+  _contractNumber: string,
   contractId?: string | null
 ): Promise<ContractDocumentsResult> {
   const supabase = await createClient();
@@ -27,33 +26,11 @@ export async function getContractDocuments(
       .eq("contract_id", contractId)
       .order("uploaded_at", { ascending: false, nullsFirst: false });
 
-    if (!byContract.error && (byContract.data?.length ?? 0) > 0) {
-      return { data: (byContract.data ?? []) as ContractDocument[], error: null };
-    }
+    if (byContract.error) return { data: null, error: byContract.error.message };
+    return { data: (byContract.data ?? []) as ContractDocument[], error: null };
   }
-
-  const businessCaseId = await getBusinessCaseIdForContract(
-    contractNumber,
-    contractId
-  );
-
-  if (!businessCaseId) {
-    return { data: [], error: null };
-  }
-
-  const { data, error } = await supabase
-    .from("documents")
-    .select(
-      "id, business_case_id, title, document_type, storage_path, mime_type, uploaded_at, company_id"
-    )
-    .eq("business_case_id", businessCaseId)
-    .order("uploaded_at", { ascending: false, nullsFirst: false });
-
-  if (error) {
-    return { data: null, error: error.message };
-  }
-
-  return { data: (data ?? []) as ContractDocument[], error: null };
+  // Deal-only documents stay on the Deal until explicitly linked to a Contract.
+  return { data: [], error: null };
 }
 
 export async function getDocumentDownloadUrls(

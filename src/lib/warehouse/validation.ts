@@ -6,10 +6,10 @@ import type {
 } from "@/lib/warehouse/types";
 
 function requireId(value: string | null | undefined, label: string): string | null {
-  if (!value?.trim()) {
+  if (typeof value !== "string" || !value.trim()) {
     return `${label} is required.`;
   }
-  return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? null : `${label} must be a valid identifier.`;
 }
 
 function requirePositiveQuantity(quantity: number): string | null {
@@ -27,7 +27,7 @@ function requireNonZeroQuantity(quantity: number): string | null {
 }
 
 function requireLot(lotNumber: string): string | null {
-  if (!lotNumber.trim()) {
+  if (typeof lotNumber !== "string" || !lotNumber.trim()) {
     return "Lot number is required.";
   }
   return null;

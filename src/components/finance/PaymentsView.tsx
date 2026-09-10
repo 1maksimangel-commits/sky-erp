@@ -1,4 +1,5 @@
 "use client";
+import { StandalonePaymentForm } from "./StandalonePaymentForm";
 
 import { AlertCircle, Plus, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -115,6 +116,8 @@ export function PaymentsView({
               id: `temp-${Date.now()}`,
               payment_date: new Date().toISOString().slice(0, 10),
               invoice_id: null,
+              payer_company_id: null,
+              payee_company_id: null,
               business_case_id: null,
               contract_id: null,
               bank_account_id: null,
@@ -137,6 +140,7 @@ export function PaymentsView({
       />
 
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
+      <StandalonePaymentForm options={options} />
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

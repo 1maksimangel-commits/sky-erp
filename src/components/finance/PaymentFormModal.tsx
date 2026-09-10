@@ -242,7 +242,7 @@ export function PaymentFormModal({
                 }
               >
                 <option value="">Optional</option>
-                {options.bankAccounts.map((account) => (
+                {options.bankAccounts.filter(account => account.is_active && !account.counterparty_id && account.currency === form.currency && account.company_id === selectedInvoice?.company_id).map((account) => (
                   <option key={account.id} value={account.id}>
                     {account.name} ({account.currency})
                   </option>

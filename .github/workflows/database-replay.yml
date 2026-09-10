@@ -31,6 +31,7 @@ jobs:
       - run: pnpm contracts:test
       - run: node --test scripts/database/documents-engine.test.mjs
       - run: pnpm db:check
+      # Includes mandatory Core, Contracts, Documents and Operations HTTP gates.
       - run: pnpm db:replay
       - run: pnpm exec tsc --noEmit
       - run: pnpm lint

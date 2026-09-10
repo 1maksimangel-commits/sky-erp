@@ -19,7 +19,7 @@ import {
   validatePaymentFormInput,
 } from "@/lib/finance/validation";
 import { recordEntityEvent } from "@/lib/platform/audit";
-import { assertCan } from "@/lib/platform/permissions";
+import { assertCan, can } from "@/lib/platform/permissions";
 
 export type FinanceActionResult =
   | { success: true; id?: string }
@@ -31,18 +31,6 @@ function nullIfEmpty(value: string | null | undefined): string | null {
 }
 
 function formatError(error: { message: string }): string {
-  if (/business_case_id/i.test(error.message)) {
-    return "Finance schema is incomplete. Apply supabase/migrations/20260804180000_finance_module.sql and supabase/migrations/20260805050000_payments_business_case_id.sql in the Supabase SQL Editor.";
-  }
-
-  if (
-    /currencies|exchange_rates|bank_accounts|invoice_items|payment_allocations|invoice_type|finance_register_payment|schema cache|does not exist|PGRST202|PGRST205|42703/i.test(
-      error.message
-    )
-  ) {
-    return "Finance schema is incomplete. Apply supabase/migrations/20260804180000_finance_module.sql in the Supabase SQL Editor.";
-  }
-
   return (
     error.message.replace(/^ERROR:\s*/i, "").replace(/\n/g, " ") ||
     "Finance operation failed. Please try again."
@@ -59,207 +47,43 @@ function revalidateFinance() {
   revalidatePath("/contracts");
 }
 
-function lineTotal(quantity: number, unitPrice: number, taxRate: number) {
-  const base = roundMoney(quantity * unitPrice);
-  return roundMoney(base + (base * taxRate) / 100);
+export async function createInvoice(input: InvoiceFormInput): Promise<FinanceActionResult> {
+  return saveInvoice(null, input);
 }
 
-export async function createInvoice(
-  input: InvoiceFormInput
-): Promise<FinanceActionResult> {
+export async function updateInvoice(id: string, input: InvoiceFormInput): Promise<FinanceActionResult> {
+  return saveInvoice(id, input);
+}
+
+async function saveInvoice(id: string | null, input: InvoiceFormInput): Promise<FinanceActionResult> {
   const denied = await assertCan("finance.write");
-  if (denied) {
-    return { success: false, error: denied };
-  }
-
+  if (denied) return { success: false, error: denied };
   const supabase = await createClient();
-
-  const { data: contract, error: contractError } = await supabase
-    .from("contracts")
-    .select("id, company_id, business_case_id")
-    .eq("id", input.contract_id)
-    .maybeSingle();
-
-  if (contractError) {
-    return { success: false, error: formatError(contractError) };
-  }
-  if (!contract) {
-    return { success: false, error: "Selected contract was not found." };
-  }
-
-  const resolvedCompanyId =
-    nullIfEmpty(input.company_id) ?? nullIfEmpty(contract.company_id);
-  if (!resolvedCompanyId) {
-    return {
-      success: false,
-      error: "Company is required. Set company on the invoice or contract.",
-    };
-  }
-
-  if (
-    contract.company_id &&
-    resolvedCompanyId !== contract.company_id
-  ) {
-    return {
-      success: false,
-      error: "Invoice company must match the selected contract company.",
-    };
-  }
-
-  const resolvedBusinessCaseId =
-    nullIfEmpty(input.business_case_id) ??
-    nullIfEmpty(contract.business_case_id);
-
-  if (resolvedBusinessCaseId) {
-    const { data: businessCase, error: bcError } = await supabase
-      .from("business_cases")
-      .select("id, company_id")
-      .eq("id", resolvedBusinessCaseId)
-      .maybeSingle();
-
-    if (bcError) {
-      return { success: false, error: formatError(bcError) };
-    }
-    if (!businessCase) {
-      return { success: false, error: "Selected business case was not found." };
-    }
-    if (
-      businessCase.company_id &&
-      businessCase.company_id !== resolvedCompanyId
-    ) {
-      return {
-        success: false,
-        error: "Business case company must match the invoice company.",
-      };
-    }
-  }
-
-  const normalizedInput: InvoiceFormInput = {
-    ...input,
-    company_id: resolvedCompanyId,
-    business_case_id: resolvedBusinessCaseId,
-    currency: normalizeCurrencyCode(input.currency),
-  };
-
-  const validationError = validateInvoiceFormInput(normalizedInput);
-  if (validationError) {
-    return { success: false, error: validationError };
-  }
-
-  const items = normalizedInput.items.map((item, index) => {
-    const quantity = Number(item.quantity);
-    const unitPrice = roundMoney(Number(item.unit_price));
-    const taxRate = Number(item.tax_rate) || 0;
-    return {
-      product_id: nullIfEmpty(item.product_id),
-      description: item.description.trim(),
-      quantity,
-      unit_price: unitPrice,
-      tax_rate: taxRate,
-      line_total: lineTotal(quantity, unitPrice, taxRate),
-      sort_order: index,
-    };
+  const { data: contract, error } = await supabase.from("contracts")
+    .select("id, company_id, business_case_id").eq("id", input.contract_id).maybeSingle();
+  if (error || !contract) return { success: false, error: error?.message ?? "Contract was not found." };
+  const normalized = { ...input, company_id: input.company_id || contract.company_id,
+    business_case_id: input.business_case_id || contract.business_case_id,
+    currency: normalizeCurrencyCode(input.currency) };
+  const invalid = validateInvoiceFormInput(normalized);
+  if (invalid) return { success: false, error: invalid };
+  const saved = await supabase.rpc("finance_save_invoice", {
+    p_id: id, p_invoice: normalized, p_items: normalized.items,
   });
-
-  const subtotal = roundMoney(
-    items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
-  );
-  const taxAmount = roundMoney(
-    items.reduce(
-      (sum, item) =>
-        sum + (item.quantity * item.unit_price * item.tax_rate) / 100,
-      0
-    )
-  );
-  const amount = roundMoney(subtotal + taxAmount);
-
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .insert({
-      invoice_number: normalizedInput.invoice_number.trim(),
-      invoice_type: normalizedInput.invoice_type,
-      contract_id: normalizedInput.contract_id,
-      business_case_id: resolvedBusinessCaseId,
-      shipment_id: nullIfEmpty(normalizedInput.shipment_id),
-      company_id: resolvedCompanyId,
-      buyer_id: nullIfEmpty(normalizedInput.buyer_id),
-      supplier_id: nullIfEmpty(normalizedInput.supplier_id),
-      currency: normalizeCurrencyCode(normalizedInput.currency) || "USD",
-      issue_date: nullIfEmpty(normalizedInput.issue_date),
-      due_date: nullIfEmpty(normalizedInput.due_date),
-      payment_terms: nullIfEmpty(normalizedInput.payment_terms),
-      tax_rate: normalizedInput.tax_rate || 0,
-      tax_amount: taxAmount,
-      subtotal,
-      amount,
-      paid_amount: 0,
-      outstanding: amount,
-      status: normalizedInput.status,
-      notes: nullIfEmpty(normalizedInput.notes),
-      updated_at: new Date().toISOString(),
-    })
-    .select("id, contract_id, business_case_id, shipment_id, invoice_number, status")
-    .single();
-
-  if (error) {
-    return { success: false, error: formatError(error) };
-  }
-
-  const { error: itemsError } = await supabase.from("invoice_items").insert(
-    items.map((item) => ({
-      ...item,
-      invoice_id: invoice.id,
-    }))
-  );
-
-  if (itemsError) {
-    await supabase.from("invoices").delete().eq("id", invoice.id);
-    return { success: false, error: formatError(itemsError) };
-  }
-
-  const issued = !/draft/i.test(invoice.status ?? "");
-  await recordEntityEvent({
-    entityType: "invoice",
-    entityId: invoice.id,
-    action: "created",
-    eventType: issued ? "invoice_issued" : "invoice_created",
-    title: issued ? "Invoice issued" : "Invoice created",
-    summary: `Invoice ${invoice.invoice_number} created`,
-    newValue: {
-      invoice_number: invoice.invoice_number,
-      amount,
-      status: invoice.status,
-    },
-    notify: {
-      title: issued ? "Invoice issued" : "Invoice created",
-      body: invoice.invoice_number,
-      category: "finance",
-      href: `/finance/invoices/${invoice.id}`,
-    },
-    fanout: [
-      ...(invoice.contract_id
-        ? [{ entityType: "contract", entityId: invoice.contract_id as string }]
-        : []),
-      ...(invoice.business_case_id
-        ? [
-            {
-              entityType: "business_case",
-              entityId: invoice.business_case_id as string,
-            },
-          ]
-        : []),
-      ...(invoice.shipment_id
-        ? [{ entityType: "shipment", entityId: invoice.shipment_id as string }]
-        : []),
-    ],
-  });
-
+  if (saved.error) return { success: false, error: formatError(saved.error) };
   revalidateFinance();
-  if (invoice.contract_id) {
-    revalidatePath(`/contracts/${invoice.contract_id}/finance`);
-  }
+  revalidatePath(`/contracts/${input.contract_id}`);
+  return { success: true, id: saved.data };
+}
 
-  return { success: true, id: invoice.id };
+export async function cancelInvoice(id: string): Promise<FinanceActionResult> {
+  const denied = await assertCan("finance.write");
+  if (denied) return { success: false, error: denied };
+  const db = await createClient();
+  const result = await db.from("invoices").update({ status: "Cancelled" }).eq("id", id).select("id").single();
+  if (result.error) return { success: false, error: result.error.message };
+  revalidateFinance();
+  return { success: true, id: result.data.id };
 }
 
 export async function registerPayment(
@@ -343,27 +167,6 @@ export async function registerPayment(
     }
   }
 
-  if (invoice.contract_id && invoice.company_id) {
-    const { data: contract, error: contractError } = await supabase
-      .from("contracts")
-      .select("id, company_id")
-      .eq("id", invoice.contract_id)
-      .maybeSingle();
-
-    if (contractError) {
-      return { success: false, error: formatError(contractError) };
-    }
-    if (
-      contract?.company_id &&
-      contract.company_id !== invoice.company_id
-    ) {
-      return {
-        success: false,
-        error: "Invoice is linked to a contract owned by another company.",
-      };
-    }
-  }
-
   const { data, error } = await supabase.rpc("finance_register_payment", {
     p_invoice_id: input.invoice_id,
     p_amount: amount,
@@ -381,12 +184,12 @@ export async function registerPayment(
 
   const paymentId = data as string;
 
-  await recordEntityEvent({
+  if (await can("platform.write", invoice.company_id)) await recordEntityEvent({
     entityType: "payment",
     entityId: paymentId,
     action: "created",
-    eventType: "payment_received",
-    title: "Payment received",
+    eventType: "payment_registered",
+    title: "Payment registered",
     summary: `Payment of ${amount} ${currency} registered`,
     newValue: {
       amount,
@@ -396,24 +199,13 @@ export async function registerPayment(
     relatedEntityType: "invoice",
     relatedEntityId: input.invoice_id,
     notify: {
-      title: "Payment received",
+      title: "Payment registered",
       body: invoice.invoice_number ?? paymentId,
       category: "finance",
       href: `/finance/payments/${paymentId}`,
     },
     fanout: [
       { entityType: "invoice", entityId: input.invoice_id },
-      ...(invoice.contract_id
-        ? [{ entityType: "contract", entityId: invoice.contract_id }]
-        : []),
-      ...(invoice.business_case_id
-        ? [
-            {
-              entityType: "business_case",
-              entityId: invoice.business_case_id,
-            },
-          ]
-        : []),
     ],
   });
 
@@ -432,7 +224,7 @@ export async function createBankAccount(
   const normalized: BankAccountFormInput = {
     ...input,
     currency: normalizeCurrencyCode(input.currency),
-    opening_balance: roundMoney(Number(input.opening_balance) || 0),
+    opening_balance: roundMoney(Number(input.opening_balance)),
   };
 
   const validationError = validateBankAccountFormInput(normalized);
@@ -447,6 +239,9 @@ export async function createBankAccount(
     .from("bank_accounts")
     .insert({
       company_id: normalized.company_id,
+      counterparty_id: nullIfEmpty(normalized.counterparty_id),
+      account_holder: nullIfEmpty(normalized.account_holder),
+      correspondent_details: nullIfEmpty(normalized.correspondent_details),
       name: normalized.name.trim(),
       bank_name: nullIfEmpty(normalized.bank_name),
       bank_address: nullIfEmpty(normalized.bank_address),

@@ -13,12 +13,12 @@ import type {
   TimelineEventFormInput,
 } from "@/lib/logistics/types";
 import {
-  companiesMatch,
   duplicateBlError,
   duplicateContainerError,
   validateShipmentFormInput,
 } from "@/lib/logistics/validation";
 import { recordEntityEvent } from "@/lib/platform/audit";
+import { can } from "@/lib/platform/permissions";
 
 export type ShipmentActionResult =
   | { success: true; id?: string }
@@ -65,18 +65,6 @@ function formInputToRow(input: ShipmentFormInput) {
 }
 
 function formatActionError(error: { message: string }): string {
-  if (/company_id|bl_number|consignee|notify_party/i.test(error.message)) {
-    return "Logistics schema is incomplete. Apply supabase/migrations/20260805100000_logistics_p0_ownership_columns.sql in the Supabase SQL Editor.";
-  }
-
-  if (
-    /voyage|business_case_id|tracking_number|booking_number|shipping_line|etd_actual|eta_actual|container_type|seal_number|freight_forwarder|remarks|shipment_timeline_events|schema cache|does not exist|42703|PGRST205/i.test(
-      error.message
-    )
-  ) {
-    return "Logistics schema is incomplete. Apply supabase/migrations/20260804160000_shipments_logistics_columns.sql in the Supabase SQL Editor.";
-  }
-
   return formatSupabaseError(error);
 }
 
@@ -97,7 +85,7 @@ async function resolveShipmentOwnership(
   supabase: Awaited<ReturnType<typeof createClient>>,
   input: ShipmentFormInput
 ): Promise<
-  { ok: true; input: ShipmentFormInput } | { ok: false; error: string }
+  { ok: true; input: ShipmentFormInput; auditTargets: Array<{ entityType: string; entityId: string }> } | { ok: false; error: string }
 > {
   const companyBind = await bindLogisticsWriteCompany(input.company_id);
   if (!companyBind.ok) {
@@ -134,23 +122,12 @@ async function resolveShipmentOwnership(
     return { ok: false, error: scopeDenied };
   }
 
-  if (contract.company_id && companyId !== contract.company_id) {
-    return {
-      ok: false,
-      error: "Shipment company must match the selected contract company.",
-    };
-  }
-
-  // Active-company mode: contract must belong to the same company.
-  if (
-    companyBind.companyId &&
-    contract.company_id &&
-    contract.company_id !== companyBind.companyId
-  ) {
-    return {
-      ok: false,
-      error: "Contract belongs to another company.",
-    };
+  if (contract.company_id !== companyId) {
+    const { data: parties, error } = await supabase.from("contract_parties")
+      .select("id").eq("contract_id", contract.id).eq("internal_company_id", companyId)
+      .in("role_code", ["seller", "buyer"]);
+    if (error) return { ok: false, error: error.message };
+    if (!parties?.length) return { ok: false, error: "Company must own or be a Seller/Buyer of this contract." };
   }
 
   const businessCaseId =
@@ -164,6 +141,9 @@ async function resolveShipmentOwnership(
     };
   }
 
+  if (contract.business_case_id && businessCaseId !== contract.business_case_id) {
+    return { ok: false, error: "Shipment Deal must match its contract." };
+  }
   const { data: businessCase, error: bcError } = await supabase
     .from("business_cases")
     .select("id, company_id")
@@ -173,10 +153,10 @@ async function resolveShipmentOwnership(
   if (bcError) {
     return { ok: false, error: formatActionError(bcError) };
   }
-  if (!businessCase) {
+  if (!businessCase && !contract.business_case_id) {
     return { ok: false, error: "Selected business case was not found." };
   }
-  if (!companiesMatch(businessCase.company_id, companyId)) {
+  if (!contract.business_case_id && businessCase?.company_id !== companyId) {
     return {
       ok: false,
       error: "Business case company must match the shipment company.",
@@ -185,6 +165,12 @@ async function resolveShipmentOwnership(
 
   return {
     ok: true,
+    // Timeline related records must share ownership. A readable internal-party
+    // contract does not authorize writing its owner's private operational audit.
+    auditTargets: await can("platform.write", companyId) ? [
+      ...(contract.company_id === companyId ? [{ entityType: "contract", entityId: contract.id }] : []),
+      ...(businessCase?.company_id === companyId ? [{ entityType: "business_case", entityId: businessCase.id }] : []),
+    ] : [],
     input: {
       ...input,
       company_id: companyId,
@@ -217,23 +203,7 @@ async function assertNoDuplicateIdentifiers(
     if (excludeId) query = query.neq("id", excludeId);
 
     const { data, error } = await query;
-    if (error && /company_id|42703|PGRST204/i.test(error.message)) {
-      // Retry without company filter when column missing.
-      let fallback = supabase
-        .from("shipments")
-        .select("id, status")
-        .eq("container", container)
-        .neq("status", "Delivered")
-        .limit(1);
-      if (excludeId) fallback = fallback.neq("id", excludeId);
-      const retry = await fallback;
-      if (retry.error && !/does not exist|42703/i.test(retry.error.message)) {
-        return formatActionError(retry.error);
-      }
-      if (retry.data?.length) {
-        return duplicateContainerError(container);
-      }
-    } else if (error && !/does not exist|42703/i.test(error.message)) {
+    if (error) {
       return formatActionError(error);
     } else if (data?.length) {
       return duplicateContainerError(container);
@@ -250,9 +220,6 @@ async function assertNoDuplicateIdentifiers(
 
     const { data, error } = await query;
     if (error) {
-      if (/bl_number|42703|PGRST204|does not exist/i.test(error.message)) {
-        return "Logistics schema is incomplete. Apply supabase/migrations/20260805100000_logistics_p0_ownership_columns.sql in the Supabase SQL Editor.";
-      }
       return formatActionError(error);
     }
     if (data?.length) {
@@ -270,9 +237,7 @@ async function assertNoDuplicateIdentifiers(
       .limit(1);
     if (excludeId) query = query.neq("id", excludeId);
     const { data, error } = await query;
-    if (error && /company_id|42703|PGRST204/i.test(error.message)) {
-      // skip when column missing
-    } else if (error) {
+    if (error) {
       return formatActionError(error);
     } else if (data?.length) {
       return `Booking number ${booking} is already used on an active shipment for this company.`;
@@ -344,19 +309,7 @@ export async function createShipment(
       category: "logistics",
       href: `/logistics/${data.id}`,
     },
-    fanout: [
-      ...(data.contract_id
-        ? [{ entityType: "contract", entityId: data.contract_id as string }]
-        : []),
-      ...(data.business_case_id
-        ? [
-            {
-              entityType: "business_case",
-              entityId: data.business_case_id as string,
-            },
-          ]
-        : []),
-    ],
+    fanout: ownership.auditTargets,
   });
 
   revalidateShipmentPaths(data);
@@ -366,8 +319,10 @@ export async function createShipment(
 export async function updateShipment(
   id: string,
   input: ShipmentFormInput,
-  previousStatus?: string | null
+  _previousStatus?: string | null
 ): Promise<ShipmentActionResult> {
+  // Retained for existing callers; authorization and lifecycle use persisted state.
+  void _previousStatus;
   if (!id?.trim()) {
     return { success: false, error: "Shipment id is required." };
   }
@@ -408,7 +363,8 @@ export async function updateShipment(
     };
   }
 
-  const fromStatus = previousStatus ?? existing.status;
+  // Trust persisted lifecycle, never a client-supplied previous status.
+  const fromStatus = existing.status;
   const validationError = validateShipmentFormInput(ownership.input, {
     previousStatus: fromStatus,
   });

@@ -100,6 +100,7 @@ Redirect stubs (not canonical content) also exist at former paths under `knowled
 | `Development/AuthRLS.md` | Canonical sessions, membership roles, full RLS inventory, storage isolation and authentication regression gate |
 | `Development/CoreDomain.md` | Canonical core entities, CRUD/archive behavior, Deal product lines and isolated core regression gate |
 | `Development/DocumentGeneration.md` | Canonical templates, reviewed DOCX generation, immutable output versions and Phase 5 regression gate |
+| `Development/OperationalTransactions.md` | Company-owned shipment/inventory/financial records, canonical traceability and Phase 6 replay gate |
 | `Development/Performance.md` | Performance guidance |
 | `Roadmap/Current.md` | What exists now |
 | `Roadmap/Future.md` | Planned work |

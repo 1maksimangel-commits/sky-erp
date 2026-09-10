@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getAccessContext } from "@/lib/platform/permissions";
 import { toNumber } from "@/lib/finance/format";
 
 export type FinanceParty = { id: string; legal_name: string } | null;
@@ -8,6 +9,9 @@ export type FinanceInvoice = {
   id: string;
   invoice_number: string;
   invoice_type: string | null;
+  issuer_company_id: string | null;
+  recipient_company_id: string | null;
+  party_snapshot: { issuer?: { legal_name?: string }; recipient?: { legal_name?: string } } | null;
   contract_id: string;
   business_case_id: string | null;
   company_id: string | null;
@@ -34,6 +38,8 @@ export type FinanceInvoice = {
 };
 
 export type FinancePayment = {
+  payer_company_id: string | null;
+  payee_company_id: string | null;
   id: string;
   payment_date: string | null;
   invoice_id: string | null;
@@ -52,6 +58,9 @@ export type FinancePayment = {
 };
 
 export type BankAccount = {
+  counterparty_id: string | null;
+  account_holder: string | null;
+  correspondent_details: string | null;
   id: string;
   company_id: string;
   name: string;
@@ -77,14 +86,9 @@ export type ExchangeRate = {
 };
 
 export type FinanceDashboardStats = {
-  totalRevenue: number;
-  accountsReceivable: number;
-  accountsPayable: number;
-  cash: number;
-  bankBalance: number;
-  expenses: number;
-  profit: number;
-  overduePayments: number;
+  companyId: string | null;
+  unreviewedInvoices: number;
+  currencies: { currency: string; invoiceAmount: number; receivable: number; payable: number; bankBalance: number; expenses: number }[];
 };
 
 export type FinanceReportBundle = {
@@ -109,18 +113,8 @@ export type FinanceReportBundle = {
   expensesBySupplier: { id: string; label: string; expenses: number }[];
 };
 
-const MISSING_SCHEMA_HINT =
-  "Finance schema is incomplete. Apply supabase/migrations/20260804180000_finance_module.sql (and 20260805050000_payments_business_case_id.sql if payments.business_case_id is missing) in the Supabase SQL Editor, then reload the API schema.";
-
 function formatLoadError(message: string): string {
-  if (
-    /currencies|exchange_rates|bank_accounts|invoice_items|payment_allocations|expenses|invoice_type|business_case_id|schema cache|does not exist|PGRST205|42703/i.test(
-      message
-    )
-  ) {
-    return MISSING_SCHEMA_HINT;
-  }
-  return message || "Unable to load finance data from Supabase.";
+  return message || "Unable to load finance data from the canonical database.";
 }
 
 function firstRel<T>(value: T | T[] | null | undefined): T | null {
@@ -150,6 +144,9 @@ type InvoiceRow = {
   id: string;
   invoice_number: string;
   invoice_type: string | null;
+  issuer_company_id: string | null;
+  recipient_company_id: string | null;
+  party_snapshot: { issuer?: { legal_name?: string }; recipient?: { legal_name?: string } } | null;
   contract_id: string;
   business_case_id: string | null;
   company_id: string | null;
@@ -175,14 +172,17 @@ type InvoiceRow = {
   supplier: { id: string; legal_name: string } | { id: string; legal_name: string }[] | null;
 };
 
-function normalizeInvoice(row: InvoiceRow): FinanceInvoice {
+function normalizeInvoice(row: InvoiceRow, companyId: string | null = row.company_id): FinanceInvoice {
   const outstanding = toNumber(row.outstanding);
   const status = resolveInvoiceStatus(row.status, row.due_date, outstanding);
 
   return {
     id: row.id,
     invoice_number: row.invoice_number,
-    invoice_type: row.invoice_type,
+    invoice_type: row.party_snapshot ? (row.issuer_company_id === companyId ? "Sales Invoice" : row.recipient_company_id === companyId ? "Purchase Invoice" : "Commercial Invoice") : row.invoice_type,
+    issuer_company_id: row.issuer_company_id,
+    recipient_company_id: row.recipient_company_id,
+    party_snapshot: row.party_snapshot,
     contract_id: row.contract_id,
     business_case_id: row.business_case_id,
     company_id: row.company_id,
@@ -210,7 +210,7 @@ function normalizeInvoice(row: InvoiceRow): FinanceInvoice {
 }
 
 const invoiceSelect = `
-  id, invoice_number, invoice_type, contract_id, business_case_id, company_id,
+  id, invoice_number, invoice_type, issuer_company_id, recipient_company_id, party_snapshot, contract_id, business_case_id, company_id,
   buyer_id, supplier_id, currency, amount, paid_amount, outstanding, tax_amount,
   subtotal, tax_rate, status, issue_date, due_date, payment_terms, notes, created_at,
   contract:contract_id ( id, contract_number ),
@@ -221,7 +221,7 @@ const invoiceSelect = `
 `;
 
 const paymentSelect = `
-  id, payment_date, invoice_id, business_case_id, contract_id, bank_account_id,
+  id, payer_company_id, payee_company_id, payment_date, invoice_id, business_case_id, contract_id, bank_account_id,
   amount, currency, reference, status, notes,
   invoice:invoice_id ( id, invoice_number ),
   business_case:business_case_id ( id, case_number ),
@@ -230,6 +230,8 @@ const paymentSelect = `
 `;
 
 type PaymentRow = {
+  payer_company_id: string | null;
+  payee_company_id: string | null;
   id: string;
   payment_date: string | null;
   invoice_id: string | null;
@@ -249,6 +251,8 @@ type PaymentRow = {
 
 function normalizePayment(row: PaymentRow): FinancePayment {
   return {
+    payer_company_id: row.payer_company_id,
+    payee_company_id: row.payee_company_id,
     id: row.id,
     payment_date: row.payment_date,
     invoice_id: row.invoice_id,
@@ -270,6 +274,7 @@ function normalizePayment(row: PaymentRow): FinancePayment {
 export async function getFinanceInvoices(): Promise<
   { data: FinanceInvoice[]; error: null } | { data: null; error: string }
 > {
+  const context = await getAccessContext();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("invoices")
@@ -281,7 +286,7 @@ export async function getFinanceInvoices(): Promise<
   }
 
   return {
-    data: ((data ?? []) as unknown as InvoiceRow[]).map(normalizeInvoice),
+    data: ((data ?? []) as unknown as InvoiceRow[]).map(row => normalizeInvoice(row, context?.companyId ?? row.company_id)),
     error: null,
   };
 }
@@ -289,6 +294,7 @@ export async function getFinanceInvoices(): Promise<
 export async function getFinanceInvoiceById(
   id: string
 ): Promise<{ data: FinanceInvoice; error: null } | { data: null; error: string }> {
+  const context = await getAccessContext();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("invoices")
@@ -305,7 +311,7 @@ export async function getFinanceInvoiceById(
   }
 
   return {
-    data: normalizeInvoice(data as unknown as InvoiceRow),
+    data: normalizeInvoice(data as unknown as InvoiceRow, context?.companyId ?? data.company_id),
     error: null,
   };
 }
@@ -361,36 +367,21 @@ export async function getBankAccounts(): Promise<
     .from("bank_accounts")
     .select(
       `
-      id, company_id, name, bank_name, bank_address, account_number, iban, swift,
+      id, company_id, counterparty_id, account_holder, correspondent_details, name, bank_name, bank_address, account_number, iban, swift,
       currency, opening_balance, current_balance, is_active,
       company:company_id ( id, name )
     `
     )
     .order("name");
 
-  if (error && /bank_address|schema cache|PGRST204|42703/i.test(error.message)) {
-    const fallback = await supabase
-      .from("bank_accounts")
-      .select(`
-        id, company_id, name, bank_name, account_number, iban, swift,
-        currency, opening_balance, current_balance, is_active,
-        company:company_id ( id, name )
-      `)
-      .order("name");
-    if (fallback.error) return { data: null, error: formatLoadError(fallback.error.message) };
-    return {
-      data: ((fallback.data ?? []) as unknown as Array<Omit<BankAccount, "bank_address">>).map(
-        (row) => ({ ...row, bank_address: null })
-      ),
-      error: null,
-    };
-  }
-
   if (error) {
     return { data: null, error: formatLoadError(error.message) };
   }
 
   type Row = {
+    counterparty_id: string | null;
+    account_holder: string | null;
+    correspondent_details: string | null;
     id: string;
     company_id: string;
     name: string;
@@ -410,6 +401,9 @@ export async function getBankAccounts(): Promise<
     data: ((data ?? []) as unknown as Row[]).map((row) => ({
       id: row.id,
       company_id: row.company_id,
+      counterparty_id: row.counterparty_id,
+      account_holder: row.account_holder,
+      correspondent_details: row.correspondent_details,
       name: row.name,
       bank_name: row.bank_name,
       bank_address: row.bank_address,
@@ -454,88 +448,43 @@ export async function getExchangeRates(): Promise<
 }
 
 export async function getFinanceDashboardStats(): Promise<
-  | { data: FinanceDashboardStats; error: null }
-  | { data: null; error: string }
+  { data: FinanceDashboardStats; error: null } | { data: null; error: string }
 > {
-  const supabase = await createClient();
-
-  const [invoicesResult, banksResult, expensesResult] = await Promise.all([
-    supabase
-      .from("invoices")
-      .select("invoice_type, amount, outstanding, status, due_date, currency"),
-    supabase.from("bank_accounts").select("current_balance, is_active"),
-    supabase.from("expenses").select("amount, status"),
+  const context = await getAccessContext();
+  const companyId = context?.companyId ?? null;
+  if (!companyId) return { data: { companyId, currencies: [], unreviewedInvoices: 0 }, error: null };
+  const db = await createClient();
+  const [invoices, banks, expenses] = await Promise.all([
+    db.from("invoices").select("issuer_company_id,recipient_company_id,amount,outstanding,status,currency,party_snapshot"),
+    db.from("bank_accounts").select("currency,current_balance").eq("company_id", companyId).eq("is_active", true).is("counterparty_id", null),
+    db.from("expenses").select("currency,amount,status").eq("company_id", companyId),
   ]);
-
-  if (invoicesResult.error) {
-    return { data: null, error: formatLoadError(invoicesResult.error.message) };
+  const error = invoices.error ?? banks.error ?? expenses.error;
+  if (error) return { data: null, error: error.message };
+  const groups = new Map<string, FinanceDashboardStats["currencies"][number]>();
+  function group(currency: string) {
+    const found = groups.get(currency) ?? { currency, invoiceAmount: 0, receivable: 0, payable: 0, bankBalance: 0, expenses: 0 };
+    groups.set(currency, found);
+    return found;
   }
-  if (banksResult.error) {
-    return { data: null, error: formatLoadError(banksResult.error.message) };
-  }
-  if (expensesResult.error) {
-    return { data: null, error: formatLoadError(expensesResult.error.message) };
-  }
-
-  let totalRevenue = 0;
-  let accountsReceivable = 0;
-  let accountsPayable = 0;
-  let overduePayments = 0;
-
-  for (const invoice of invoicesResult.data ?? []) {
-    const type = invoice.invoice_type ?? "Sales Invoice";
-    const amount = toNumber(invoice.amount);
-    const outstanding = toNumber(invoice.outstanding);
-    const status = resolveInvoiceStatus(
-      invoice.status,
-      invoice.due_date,
-      outstanding
-    );
-
-    if (status === "Cancelled") continue;
-
-    if (type === "Sales Invoice" || type === "Proforma Invoice") {
-      totalRevenue += amount;
-      accountsReceivable += outstanding;
-    }
-
-    if (type === "Purchase Invoice") {
-      accountsPayable += outstanding;
-    }
-
-    if (type === "Credit Note") {
-      totalRevenue -= amount;
-    }
-
-    if (status === "Overdue") {
-      overduePayments += 1;
+  const cents = (value: number | string | null) => Math.round(toNumber(value) * 100);
+  let unreviewedInvoices = 0;
+  for (const invoice of invoices.data ?? []) {
+    if (!invoice.party_snapshot || !invoice.currency) { unreviewedInvoices++; continue; }
+    if (invoice.status === "Cancelled" || (invoice.issuer_company_id !== companyId && invoice.recipient_company_id !== companyId)) continue;
+    const total = group(invoice.currency);
+    total.invoiceAmount += cents(invoice.amount);
+    if (invoice.status !== "Draft") {
+      if (invoice.issuer_company_id === companyId) total.receivable += cents(invoice.outstanding);
+      if (invoice.recipient_company_id === companyId) total.payable += cents(invoice.outstanding);
     }
   }
-
-  const bankBalance = (banksResult.data ?? [])
-    .filter((item) => item.is_active)
-    .reduce((sum, item) => sum + toNumber(item.current_balance), 0);
-
-  const expenses = (expensesResult.data ?? [])
-    .filter((item) => (item.status ?? "Posted") !== "Cancelled")
-    .reduce((sum, item) => sum + toNumber(item.amount), 0);
-
-  const cash = bankBalance;
-  const profit = totalRevenue - expenses;
-
-  return {
-    data: {
-      totalRevenue,
-      accountsReceivable,
-      accountsPayable,
-      cash,
-      bankBalance,
-      expenses,
-      profit,
-      overduePayments,
-    },
-    error: null,
-  };
+  for (const bank of banks.data ?? []) group(bank.currency).bankBalance += cents(bank.current_balance);
+  for (const expense of expenses.data ?? []) if (expense.status === "Posted") group(expense.currency).expenses += cents(expense.amount);
+  return { data: { companyId, unreviewedInvoices, currencies: [...groups.values()].map(g => ({
+    currency: g.currency, invoiceAmount: g.invoiceAmount / 100, receivable: g.receivable / 100,
+    payable: g.payable / 100, bankBalance: g.bankBalance / 100, expenses: g.expenses / 100,
+  })) }, error: null };
 }
 
 export async function getFinanceReports(): Promise<
@@ -844,7 +793,7 @@ export async function getBusinessCaseProfitResult(
 }
 
 export type FinanceOptionBundles = {
-  contracts: { id: string; contract_number: string; company_id: string | null; buyer_id: string | null; supplier_id: string | null; currency: string | null }[];
+  contracts: { id: string; contract_number: string; company_id: string | null; buyer_id: string | null; supplier_id: string | null; currency: string | null; business_case_id: string | null; parties: { role_code: string; snapshot: { legal_name?: string } }[] }[];
   businessCases: { id: string; case_number: string; contract_number: string | null }[];
   shipments: { id: string; container: string | null; contract_id: string | null; status: string | null }[];
   companies: { id: string; name: string }[];
@@ -869,7 +818,7 @@ export async function getFinanceOptions(): Promise<FinanceOptionBundles> {
   ] = await Promise.all([
     supabase
       .from("contracts")
-      .select("id, contract_number, company_id, buyer_id, supplier_id, currency")
+      .select("id, contract_number, company_id, buyer_id, supplier_id, currency, business_case_id, parties:contract_parties(role_code,snapshot)")
       .order("contract_number"),
     supabase
       .from("business_cases")

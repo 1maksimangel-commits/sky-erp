@@ -101,7 +101,7 @@ export async function getBusinessCaseByContractNumber(
 }
 
 /**
- * Prefer contracts.business_case_id FK, then fall back to contract_number match.
+ * Resolve the explicit canonical FK. Matching document numbers is not ownership.
  */
 export async function getBusinessCaseForContract(input: {
   contractId: string;
@@ -127,11 +127,7 @@ export async function getBusinessCaseForContract(input: {
     }
   }
 
-  const number =
-    input.contractNumber.trim() ||
-    (contract?.contract_number as string | null | undefined)?.trim() ||
-    "";
-  return getBusinessCaseByContractNumber(number);
+  return { data: null, error: null };
 }
 
 export async function getBusinessCaseIdForContract(
@@ -146,6 +142,5 @@ export async function getBusinessCaseIdForContract(
     return data?.id ?? null;
   }
 
-  const { data } = await getBusinessCaseByContractNumber(contractNumber);
-  return data?.id ?? null;
+  return null;
 }

@@ -4,6 +4,7 @@ import { getCounterparties } from "@/lib/counterparties";
 import { getDealWorkspaceData } from "@/lib/deals/db";
 import { getEntityWorkspaceBundle } from "@/lib/platform/entity-bundle";
 import { getProducts } from "@/lib/products";
+import { OperationalRecords } from "@/components/operations/OperationalRecords";
 
 export default async function BusinessCaseDetailPage({
   params,
@@ -28,6 +29,7 @@ export default async function BusinessCaseDetailPage({
 
   return (
     <DealWorkspace
+      operations={<OperationalRecords source={{ dealId: id }} />}
       data={dealResult.data}
       timeline={bundle.timeline}
       activity={bundle.activity}

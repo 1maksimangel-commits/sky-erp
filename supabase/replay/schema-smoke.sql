@@ -20,10 +20,11 @@ declare
   batch uuid;
   customer uuid;
   value numeric;
+  warehouse_actor uuid := gen_random_uuid();
 begin
   insert into public.companies(code, name) values ('REPLAY-CO', 'Fictional Replay Company') returning id into company;
-  insert into public.counterparties(code, legal_name) values ('REPLAY-CP', 'Fictional Replay Counterparty') returning id into party;
-  insert into public.products(sku, name, glaze, is_active) values ('REPLAY-P', 'Fictional Product', 10, true) returning id into product;
+  insert into public.counterparties(code, legal_name, company_id) values ('REPLAY-CP', 'Fictional Replay Counterparty', company) returning id into party;
+  insert into public.products(sku, name, glaze, is_active, company_id) values ('REPLAY-P', 'Fictional Product', 10, true, company) returning id into product;
   insert into public.business_cases(case_number, company_id, buyer_id, supplier_id)
     values ('REPLAY-DEAL', company, party, party) returning id into deal;
   if (select number from public.business_cases where id = deal) is distinct from 'REPLAY-DEAL' then
@@ -40,8 +41,8 @@ begin
   insert into public.contract_products(contract_id, product_id, quantity, unit_price) values (contract, product, 10, 10);
   insert into public.shipments(contract_id, business_case_id, company_id, port_of_loading, port_of_destination)
     values (contract, deal, company, 'Fictional Port A', 'Fictional Port B') returning id into shipment;
-  insert into public.invoices(contract_id, business_case_id, company_id, invoice_number, amount, outstanding)
-    values (contract, deal, company, 'REPLAY-INVOICE', 100, 100) returning id into invoice;
+  insert into public.invoices(contract_id, business_case_id, company_id, invoice_number, amount, outstanding, issuer_company_id,recipient_counterparty_id,party_snapshot)
+    values (contract, deal, company, 'REPLAY-INVOICE', 100, 100,company,party,'{"issuer":{"legal_name":"Fictional Replay Company"},"recipient":{"legal_name":"Fictional Replay Counterparty"}}') returning id into invoice;
   insert into public.invoice_items(invoice_id, product_id, description, quantity, unit_price, line_total)
     values (invoice, product, 'Fictional line', 10, 10, 100);
   payment := public.finance_register_payment(invoice, 20, 'USD', date '2026-01-01');
@@ -52,14 +53,19 @@ begin
   end if;
   insert into public.expenses(company_id, business_case_id, contract_id, amount, expense_date, status)
     values (company, deal, contract, 5, date '2026-01-01', 'Posted');
-  insert into public.warehouse_locations(code, name) values ('REPLAY-W1', 'Fictional Warehouse 1') returning id into warehouse;
-  insert into public.warehouse_locations(code, name) values ('REPLAY-W2', 'Fictional Warehouse 2') returning id into other_warehouse;
+  insert into auth.users(id,email) values(warehouse_actor,warehouse_actor::text || '@example.invalid');
+  insert into public.company_memberships(user_id,company_id,role_code) values(warehouse_actor,company,'warehouse');
+  update public.user_profiles set active_company_id=company where user_id=warehouse_actor;
+  perform set_config('request.jwt.claim.sub',warehouse_actor::text,true);
+  insert into public.warehouse_locations(code, name, company_id) values ('REPLAY-W1', 'Fictional Warehouse 1', company) returning id into warehouse;
+  insert into public.warehouse_locations(code, name, company_id) values ('REPLAY-W2', 'Fictional Warehouse 2', company) returning id into other_warehouse;
   perform public.warehouse_receive_stock(warehouse, product, 10, 'REPLAY-LOT');
   perform public.warehouse_issue_stock(warehouse, product, 2, 'REPLAY-LOT');
   perform public.warehouse_transfer_stock(warehouse, other_warehouse, product, 3, 'REPLAY-LOT');
   perform public.warehouse_adjust_stock(warehouse, product, 1, 'REPLAY-LOT', 'Fictional schema test');
   select quantity into value from public.inventory where warehouse_id = warehouse and product_id = product;
   if value is distinct from 6 then raise exception 'Warehouse RPC schema smoke failed'; end if;
+  perform set_config('request.jwt.claim.sub','',true);
   insert into public.contract_imports(file_path, file_name, status, created_contract_id)
     values ('imports/replay.pdf', 'replay.pdf', 'uploaded', contract);
   insert into public.documents(title, document_type, contract_id, business_case_id, file_path)

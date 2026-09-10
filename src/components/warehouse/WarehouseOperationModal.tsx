@@ -7,6 +7,7 @@ import {
   issueInventory,
   receiveInventory,
   transferInventory,
+  getWarehouseOperationChoices,
 } from "@/lib/warehouse/actions";
 import type {
   WarehouseLocation,
@@ -25,9 +26,14 @@ type WarehouseOperationModalProps = {
   defaultWarehouseId?: string;
   defaultProductId?: string;
   defaultLotNumber?: string;
+  defaultCompanyId?: string;
 };
 
 type FormState = {
+  company_id: string;
+  contract_id: string;
+  business_case_id: string;
+  shipment_id: string;
   warehouse_id: string;
   from_location: string;
   to_location: string;
@@ -66,6 +72,10 @@ function emptyForm(
   defaultLotNumber?: string
 ): FormState {
   return {
+    company_id: "",
+    contract_id: "",
+    business_case_id: "",
+    shipment_id: "",
     warehouse_id: defaultWarehouseId ?? "",
     from_location: defaultWarehouseId ?? "",
     to_location: "",
@@ -112,12 +122,26 @@ export function WarehouseOperationModal({
   defaultWarehouseId,
   defaultProductId,
   defaultLotNumber,
+  defaultCompanyId,
 }: WarehouseOperationModalProps) {
   const [form, setForm] = useState<FormState>(() =>
     emptyForm(defaultWarehouseId, defaultProductId, defaultLotNumber)
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [choices, setChoices] = useState<Awaited<ReturnType<typeof getWarehouseOperationChoices>> | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    getWarehouseOperationChoices().then((result) => {
+      if (!active) return;
+      setChoices(result);
+      setForm((current) => ({ ...current, company_id: current.company_id || defaultCompanyId || result.companyId || "" }));
+      if (result.error) setError(result.error);
+    }).catch(() => { if (active) setError("Unable to load operation sources."); });
+    return () => { active = false; };
+  }, [open, defaultCompanyId]);
 
   const activeWarehouses = useMemo(
     () => warehouses.filter((item) => (item.status ?? "Active") === "Active"),
@@ -171,9 +195,11 @@ export function WarehouseOperationModal({
     setError(null);
 
     let result;
+    const trace = { company_id: form.company_id, contract_id: form.contract_id || null, business_case_id: form.business_case_id || null, shipment_id: form.shipment_id || null };
 
     if (operation === "receive") {
       result = await receiveInventory({
+        ...trace,
         warehouse_id: form.warehouse_id,
         product_id: form.product_id,
         quantity,
@@ -181,23 +207,19 @@ export function WarehouseOperationModal({
         production_date: form.production_date || null,
         expiry_date: form.expiry_date || null,
         reference: form.reference || null,
-        contract_id: null,
-        shipment_id: null,
-        business_case_id: null,
       });
     } else if (operation === "issue") {
       result = await issueInventory({
+        ...trace,
         warehouse_id: form.warehouse_id,
         product_id: form.product_id,
         quantity,
         lot_number: form.lot_number,
         reference: form.reference || null,
-        contract_id: null,
-        shipment_id: null,
-        business_case_id: null,
       });
     } else if (operation === "transfer") {
       result = await transferInventory({
+        ...trace,
         from_location: form.from_location,
         to_location: form.to_location,
         product_id: form.product_id,
@@ -208,6 +230,7 @@ export function WarehouseOperationModal({
       });
     } else {
       result = await adjustInventory({
+        ...trace,
         warehouse_id: form.warehouse_id,
         product_id: form.product_id,
         quantity,
@@ -276,6 +299,33 @@ export function WarehouseOperationModal({
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Stock owner" required>
+                <select required className={inputClassName} value={form.company_id} onChange={(event) => updateField("company_id", event.target.value)}>
+                  <option value="">Select company</option>
+                  {choices?.companies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Deal">
+                <select className={inputClassName} value={form.business_case_id} onChange={(event) => updateField("business_case_id", event.target.value)}>
+                  <option value="">No Deal</option>
+                  {choices?.deals.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                </select>
+              </Field>
+              <Field label="Contract">
+                <select className={inputClassName} value={form.contract_id} onChange={(event) => {
+                  const contract = choices?.contracts.find((item) => item.id === event.target.value);
+                  setForm((current) => ({ ...current, contract_id: event.target.value, business_case_id: contract?.business_case_id || current.business_case_id, shipment_id: "" }));
+                }}>
+                  <option value="">No Contract</option>
+                  {choices?.contracts.filter((item) => !form.business_case_id || item.business_case_id === form.business_case_id).map((item) => <option key={item.id} value={item.id}>{item.contract_number}</option>)}
+                </select>
+              </Field>
+              <Field label="Shipment">
+                <select className={inputClassName} value={form.shipment_id} onChange={(event) => updateField("shipment_id", event.target.value)}>
+                  <option value="">No Shipment</option>
+                  {choices?.shipments.filter((item) => !form.contract_id || item.contract_id === form.contract_id).map((item) => <option key={item.id} value={item.id}>{item.container || item.id}</option>)}
+                </select>
+              </Field>
               {operation === "transfer" ? (
                 <>
                   <Field label="From Warehouse" required>
@@ -339,7 +389,7 @@ export function WarehouseOperationModal({
                   <option value="">Select product</option>
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.sku} — {product.name}
+                      {product.sku} — {product.name} {product.unit ? `(${product.unit})` : ""}
                     </option>
                   ))}
                 </select>

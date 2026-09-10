@@ -2,7 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DetailGrid, DetailItem } from "@/components/platform/DetailGrid";
 import { EntityWorkspace } from "@/components/platform/EntityWorkspace";
-import { getFinanceInvoiceById } from "@/lib/finance/db";
+import { getFinanceInvoiceById, getFinanceOptions } from "@/lib/finance/db";
+import { createClient } from "@/lib/supabase/server";
+import { emptyInvoiceForm } from "@/lib/finance/types";
+import { InvoiceRecordActions } from "@/components/finance/InvoiceRecordActions";
 import { formatFinanceDate, formatMoney } from "@/lib/finance/format";
 import { getEntityWorkspaceBundle } from "@/lib/platform/entity-bundle";
 
@@ -20,6 +23,9 @@ export default async function InvoiceDetailPage({
   if (!invoice) {
     notFound();
   }
+  const db = await createClient();
+  const [options, lines] = await Promise.all([getFinanceOptions(), db.from("invoice_items").select("product_id,description,quantity,unit_price,tax_rate").eq("invoice_id", id).order("sort_order")]);
+  if (lines.error) throw new Error(lines.error.message);
 
   const canPay =
     invoice.outstanding > 0 &&
@@ -45,6 +51,7 @@ export default async function InvoiceDetailPage({
       businessCaseId={invoice.business_case_id}
       overview={
         <div className="space-y-4">
+          <InvoiceRecordActions id={id} options={options} canCancel={invoice.paid_amount === 0 && invoice.status !== "Cancelled"} initial={{ ...emptyInvoiceForm(), ...invoice, currency: invoice.currency ?? "USD", invoice_type: invoice.invoice_type ?? "Sales Invoice", status: invoice.status ?? "Draft", items: lines.data ?? [] }} />
           <DetailGrid>
             <DetailItem label="Invoice Number" value={invoice.invoice_number} />
             <DetailItem label="Type" value={invoice.invoice_type} />
@@ -56,8 +63,8 @@ export default async function InvoiceDetailPage({
               label="Contract"
               value={invoice.contract?.contract_number}
             />
-            <DetailItem label="Buyer" value={invoice.buyer?.legal_name} />
-            <DetailItem label="Supplier" value={invoice.supplier?.legal_name} />
+            <DetailItem label="Issuer" value={invoice.party_snapshot?.issuer?.legal_name ?? invoice.supplier?.legal_name} />
+            <DetailItem label="Recipient" value={invoice.party_snapshot?.recipient?.legal_name ?? invoice.buyer?.legal_name} />
             <DetailItem
               label="Amount"
               value={formatMoney(invoice.amount, invoice.currency)}
@@ -98,7 +105,7 @@ export default async function InvoiceDetailPage({
                 href={`/business-cases/${invoice.business_case_id}`}
                 className="inline-flex items-center rounded-md border border-border px-3.5 py-2 text-xs font-medium text-foreground hover:bg-accent"
               >
-                Business case profit
+                Deal operations
               </Link>
             ) : null}
           </div>

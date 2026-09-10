@@ -93,55 +93,6 @@ export const shipmentColumns = `
   updated_at
 ` as const;
 
-/** Fallback select when P0 ownership columns are not applied yet. */
-export const shipmentColumnsLegacy = `
-  id,
-  contract_id,
-  business_case_id,
-  container,
-  container_type,
-  seal_number,
-  vessel,
-  voyage,
-  shipping_line,
-  booking_number,
-  tracking_number,
-  freight_forwarder,
-  port_of_loading,
-  port_of_destination,
-  etd,
-  eta,
-  etd_actual,
-  eta_actual,
-  atd,
-  ata,
-  status,
-  remarks,
-  created_at,
-  updated_at
-` as const;
-
-const MISSING_SCHEMA_HINT =
-  "Logistics schema is incomplete. Apply supabase/migrations/20260804160000_shipments_logistics_columns.sql and supabase/migrations/20260805100000_logistics_p0_ownership_columns.sql in the Supabase SQL Editor, then reload the API schema.";
-
-function formatLoadError(message: string): string {
-  if (
-    /voyage|business_case_id|company_id|bl_number|consignee|notify_party|tracking_number|booking_number|shipping_line|etd_actual|eta_actual|container_type|seal_number|freight_forwarder|remarks|shipment_timeline_events|schema cache|does not exist|42703|PGRST205/i.test(
-      message
-    )
-  ) {
-    return MISSING_SCHEMA_HINT;
-  }
-
-  return message || "Unable to load shipments from Supabase.";
-}
-
-function isMissingColumnError(message: string): boolean {
-  return /company_id|bl_number|consignee|notify_party|42703|PGRST204|schema cache|does not exist/i.test(
-    message
-  );
-}
-
 function normalizeRow(row: Record<string, unknown>): ShipmentRow {
   return {
     id: String(row.id),
@@ -207,7 +158,7 @@ async function hydrateShipments(rows: ShipmentRow[]): Promise<Shipment[]> {
     ),
   ];
 
-  const [{ data: contracts }, { data: businessCases }, { data: companies }] =
+  const [contractResult, caseResult, companyResult] =
     await Promise.all([
       supabase
         .from("contracts")
@@ -218,14 +169,20 @@ async function hydrateShipments(rows: ShipmentRow[]): Promise<Shipment[]> {
             .from("business_cases")
             .select("id, case_number")
             .in("id", businessCaseIds)
-        : Promise.resolve({ data: [] as { id: string; case_number: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; case_number: string }[], error: null }),
       companyIds.length
         ? supabase
             .from("companies")
             .select("id, name")
             .in("id", companyIds)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
     ]);
+  for (const result of [contractResult, caseResult, companyResult]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+  const contracts = contractResult.data;
+  const businessCases = caseResult.data;
+  const companies = companyResult.data;
 
   const contractsById = new Map(
     (contracts ?? []).map((item) => [item.id, item])
@@ -260,9 +217,9 @@ async function hydrateShipments(rows: ShipmentRow[]): Promise<Shipment[]> {
 }
 
 async function selectShipments(
-  query: (columns: string) => Promise<{ data: unknown[] | null; error: { message: string } | null }>
+  query: () => Promise<{ data: unknown[] | null; error: { message: string } | null }>
 ): Promise<{ rows: ShipmentRow[]; error: string | null }> {
-  const primary = await query(shipmentColumns);
+  const primary = await query();
   if (!primary.error) {
     return {
       rows: (primary.data ?? []).map((row) =>
@@ -272,21 +229,7 @@ async function selectShipments(
     };
   }
 
-  if (!isMissingColumnError(primary.error.message)) {
-    return { rows: [], error: formatLoadError(primary.error.message) };
-  }
-
-  const legacy = await query(shipmentColumnsLegacy);
-  if (legacy.error) {
-    return { rows: [], error: formatLoadError(legacy.error.message) };
-  }
-
-  return {
-    rows: (legacy.data ?? []).map((row) =>
-      normalizeRow(row as Record<string, unknown>)
-    ),
-    error: null,
-  };
+  return { rows: [], error: primary.error.message };
 }
 
 async function filterShipmentsByActiveCompany(shipments: Shipment[]): Promise<Shipment[]> {
@@ -302,10 +245,10 @@ export async function getShipments(): Promise<ShipmentsResult> {
   const supabase = await createClient();
   const activeCompanyId = await logisticsActiveCompanyId();
 
-  const { rows, error } = await selectShipments(async (columns) => {
+  const { rows, error } = await selectShipments(async () => {
     let query = supabase
       .from("shipments")
-      .select(columns)
+      .select(shipmentColumns)
       .order("etd", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
@@ -318,28 +261,6 @@ export async function getShipments(): Promise<ShipmentsResult> {
   });
 
   if (error) {
-    // Legacy schema without company_id: load unfiltered then filter via contract.
-    if (
-      activeCompanyId &&
-      /company_id|42703|PGRST204|does not exist/i.test(error)
-    ) {
-      const legacy = await selectShipments(async (columns) => {
-        const result = await supabase
-          .from("shipments")
-          .select(columns)
-          .order("etd", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false });
-        return { data: result.data as unknown[] | null, error: result.error };
-      });
-      if (legacy.error) {
-        return { data: null, stats: null, error: legacy.error };
-      }
-      const shipments = await filterShipmentsByActiveCompany(
-        await hydrateShipments(legacy.rows)
-      );
-      return { data: shipments, stats: computeStats(shipments), error: null };
-    }
-
     return { data: null, stats: null, error };
   }
 
@@ -360,10 +281,10 @@ export async function getShipmentsByContractId(
   const supabase = await createClient();
   const activeCompanyId = await logisticsActiveCompanyId();
 
-  const { rows, error } = await selectShipments(async (columns) => {
+  const { rows, error } = await selectShipments(async () => {
     let query = supabase
       .from("shipments")
-      .select(columns)
+      .select(shipmentColumns)
       .eq("contract_id", contractId)
       .order("etd", { ascending: false, nullsFirst: false });
 
@@ -388,10 +309,10 @@ export async function getShipmentsByContractId(
 export async function getShipmentById(id: string): Promise<ShipmentResult> {
   const supabase = await createClient();
 
-  const { rows, error } = await selectShipments(async (columns) => {
+  const { rows, error } = await selectShipments(async () => {
     const result = await supabase
       .from("shipments")
-      .select(columns)
+      .select(shipmentColumns)
       .eq("id", id)
       .maybeSingle();
     const data = result.data ? [result.data] : [];
@@ -425,6 +346,7 @@ export type ContractOption = {
   title: string | null;
   company_id: string | null;
   business_case_id: string | null;
+  shipment_company_id?: string | null;
 };
 
 export type BusinessCaseOption = {
@@ -438,19 +360,15 @@ export async function getContractOptions(): Promise<ContractOption[]> {
   const supabase = await createClient();
   const activeCompanyId = await logisticsActiveCompanyId();
 
-  let query = supabase
+  const query = supabase
     .from("contracts")
-    .select("id, contract_number, title, company_id, business_case_id")
+    .select("id, contract_number, title, company_id, business_case_id, parties:contract_parties(internal_company_id,role_code)")
     .order("contract_number");
-
-  if (activeCompanyId) {
-    query = query.eq("company_id", activeCompanyId);
-  }
 
   const { data, error } = await query;
 
   if (error) {
-    return [];
+    throw new Error(error.message);
   }
 
   return (data ?? []).map((row) => ({
@@ -459,6 +377,7 @@ export async function getContractOptions(): Promise<ContractOption[]> {
     title: row.title,
     company_id: row.company_id ?? null,
     business_case_id: row.business_case_id ?? null,
+    shipment_company_id: activeCompanyId && (row.company_id === activeCompanyId || row.parties?.some(p => p.internal_company_id === activeCompanyId && ["seller", "buyer"].includes(p.role_code))) ? activeCompanyId : row.company_id,
   }));
 }
 
@@ -478,7 +397,7 @@ export async function getBusinessCaseOptions(): Promise<BusinessCaseOption[]> {
   const { data, error } = await query;
 
   if (error) {
-    return [];
+    throw new Error(error.message);
   }
 
   return (data ?? []).map((row) => ({

@@ -13,6 +13,7 @@ import {
   normalizeCurrencyCode,
   roundMoney,
 } from "@/lib/finance/format";
+import { z } from "zod";
 
 const CURRENCY_SET = new Set<string>(FINANCE_CURRENCIES);
 
@@ -29,6 +30,9 @@ function validateCurrency(code: string, label = "Currency"): string | null {
 }
 
 export function validateInvoiceFormInput(input: InvoiceFormInput): string | null {
+  for (const value of [input.contract_id, input.company_id, input.business_case_id, input.shipment_id, input.buyer_id, input.supplier_id, ...input.items.map(i => i.product_id)]) {
+    if (value && !z.string().uuid().safeParse(value).success) return "Select valid Company, Contract, Deal and Product records.";
+  }
   if (!input.invoice_number.trim()) {
     return "Invoice number is required.";
   }
@@ -89,6 +93,7 @@ export function validateInvoiceFormInput(input: InvoiceFormInput): string | null
 }
 
 export function validatePaymentFormInput(input: PaymentFormInput): string | null {
+  if (!z.string().uuid().safeParse(input.invoice_id).success || (input.bank_account_id && !z.string().uuid().safeParse(input.bank_account_id).success)) return "Select a valid Invoice and Bank Account.";
   if (!input.invoice_id.trim()) {
     return "Invoice is required.";
   }
@@ -113,6 +118,7 @@ export function validatePaymentFormInput(input: PaymentFormInput): string | null
 export function validateBankAccountFormInput(
   input: BankAccountFormInput
 ): string | null {
+  if (!z.string().uuid().safeParse(input.company_id).success || (input.counterparty_id && !z.string().uuid().safeParse(input.counterparty_id).success)) return "Select valid Company and Counterparty records.";
   if (!input.company_id.trim()) {
     return "Company is required.";
   }
