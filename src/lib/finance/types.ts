@@ -84,7 +84,7 @@ export type BankAccountFormInput = {
 export type ExchangeRateFormInput = {
   base_currency: string;
   quote_currency: string;
-  rate: number;
+  rate: number | string;
   rate_date: string;
   source: string | null;
 };

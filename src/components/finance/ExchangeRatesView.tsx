@@ -54,7 +54,7 @@ export function ExchangeRatesView({
       ...emptyExchangeRateForm(),
       base_currency: form.base_currency,
       quote_currency: form.quote_currency,
-      rate: Number(form.rate),
+      rate: form.rate,
       rate_date: form.rate_date,
       source: form.source || null,
     });

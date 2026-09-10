@@ -487,6 +487,7 @@ export async function getFinanceDashboardStats(): Promise<
   })) }, error: null };
 }
 
+/** @deprecated Legacy, unverified reports only. Never a canonical profitability input. */
 export async function getFinanceReports(): Promise<
   | { data: FinanceReportBundle; error: null }
   | { data: null; error: string }
@@ -705,6 +706,7 @@ export type BusinessCaseProfitResult = {
  * Deal-level profit for one business case (sales/credit invoices − expenses).
  * Expenses may be zero until an expense UI exists.
  */
+/** @deprecated Preserved historical calculation. No active profitability entrypoint may call this. */
 export async function getBusinessCaseProfitResult(
   businessCaseId: string
 ): Promise<

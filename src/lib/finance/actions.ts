@@ -10,8 +10,8 @@ import type {
 } from "@/lib/finance/types";
 import {
   normalizeCurrencyCode,
-  roundMoney,
 } from "@/lib/finance/format";
+import { basisDecimal, moneyDecimal } from "@/lib/finance/decimal";
 import {
   validateBankAccountFormInput,
   validateExchangeRateFormInput,
@@ -99,7 +99,12 @@ export async function registerPayment(
     return { success: false, error: validationError };
   }
 
-  const amount = roundMoney(Number(input.amount));
+  let amount: string;
+  try {
+    amount = moneyDecimal(input.amount);
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Invalid monetary amount." };
+  }
   const currency = normalizeCurrencyCode(input.currency) || "USD";
   const bankAccountId = nullIfEmpty(input.bank_account_id);
 
@@ -123,13 +128,8 @@ export async function registerPayment(
     return { success: false, error: "Cannot pay a cancelled invoice." };
   }
 
-  const outstanding = roundMoney(Number(invoice.outstanding ?? 0));
-  if (amount > outstanding + 0.0001) {
-    return {
-      success: false,
-      error: `Payment exceeds outstanding balance (${outstanding}).`,
-    };
-  }
+  // The RPC locks the obligation and checks its exact numeric outstanding
+  // balance. A JS comparison here would be stale and could lose precision.
 
   const invoiceCurrency = normalizeCurrencyCode(invoice.currency) || "USD";
   if (currency !== invoiceCurrency) {
@@ -224,7 +224,6 @@ export async function createBankAccount(
   const normalized: BankAccountFormInput = {
     ...input,
     currency: normalizeCurrencyCode(input.currency),
-    opening_balance: roundMoney(Number(input.opening_balance)),
   };
 
   const validationError = validateBankAccountFormInput(normalized);
@@ -233,7 +232,12 @@ export async function createBankAccount(
   }
 
   const supabase = await createClient();
-  const opening = normalized.opening_balance;
+  let opening: string;
+  try {
+    opening = moneyDecimal(normalized.opening_balance);
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Invalid opening balance." };
+  }
 
   const { data, error } = await supabase
     .from("bank_accounts")
@@ -277,7 +281,7 @@ export async function upsertExchangeRate(
     ...input,
     base_currency: normalizeCurrencyCode(input.base_currency),
     quote_currency: normalizeCurrencyCode(input.quote_currency),
-    rate: Number(input.rate),
+    rate: input.rate,
   };
 
   const validationError = validateExchangeRateFormInput(normalized);
@@ -292,7 +296,7 @@ export async function upsertExchangeRate(
       {
         base_currency: normalized.base_currency,
         quote_currency: normalized.quote_currency,
-        rate: normalized.rate,
+        rate: basisDecimal(normalized.rate),
         rate_date: normalized.rate_date,
         source: nullIfEmpty(normalized.source),
       },

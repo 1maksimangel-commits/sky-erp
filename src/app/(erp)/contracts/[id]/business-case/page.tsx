@@ -1,7 +1,6 @@
 import { ContractBusinessCaseTab } from "@/components/contracts/ContractBusinessCaseTab";
 import { getContractById } from "@/lib/contracts/db";
 import { getBusinessCaseForContract } from "@/lib/contracts/relations";
-import { getBusinessCaseProfitResult } from "@/lib/finance/db";
 
 export default async function ContractBusinessCasePage({
   params,
@@ -20,16 +19,11 @@ export default async function ContractBusinessCasePage({
     contractNumber: contract.contract_number,
   });
 
-  const profit = businessCase
-    ? await getBusinessCaseProfitResult(businessCase.id)
-    : { data: null, error: null };
-
   return (
     <ContractBusinessCaseTab
       contract={contract}
       businessCase={businessCase}
-      profit={profit.data}
-      loadError={error ?? profit.error}
+      loadError={error}
     />
   );
 }

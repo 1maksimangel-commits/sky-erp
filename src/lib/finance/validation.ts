@@ -14,6 +14,7 @@ import {
   roundMoney,
 } from "@/lib/finance/format";
 import { z } from "zod";
+import { basisDecimal } from "@/lib/finance/decimal";
 
 const CURRENCY_SET = new Set<string>(FINANCE_CURRENCIES);
 
@@ -144,10 +145,16 @@ export function validateExchangeRateFormInput(
   const base = normalizeCurrencyCode(input.base_currency);
   const quote = normalizeCurrencyCode(input.quote_currency);
 
-  if (base === quote && input.rate !== 1) {
+  let rate: string;
+  try {
+    rate = basisDecimal(input.rate);
+  } catch {
+    return "Enter a finite decimal rate; use text for values beyond numeric precision.";
+  }
+  if (base === quote && rate !== "1.000000000000") {
     return "Same-currency rate must be 1.";
   }
-  if (!Number.isFinite(input.rate) || input.rate <= 0) {
+  if (rate.startsWith("-") || rate === "0.000000000000") {
     return "Rate must be greater than zero.";
   }
   // Rate means: 1 base = rate quote (e.g. USD/CNY = 7.25).

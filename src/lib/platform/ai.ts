@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { toNumber } from "@/lib/finance/format";
 import { getDashboardData } from "@/lib/platform/dashboard";
 
 export type AiMessage = {
@@ -122,59 +121,9 @@ export async function askErpAssistant(
       };
     }
 
-    const profitMatch = q.match(/business case\s+([a-z0-9\-_/]+)/i);
-    if (includesAny(q, ["profit"]) && (profitMatch || includesAny(q, ["bc-"]))) {
-      const caseNumber =
-        profitMatch?.[1]?.toUpperCase() ||
-        question.match(/BC-[A-Z0-9\-_/]+/i)?.[0]?.toUpperCase();
-
-      if (!caseNumber) {
-        return {
-          answer: "Specify a business case number, e.g. Calculate profit for Business Case BC-001.",
-          error: null,
-        };
-      }
-
-      const { data: bc } = await supabase
-        .from("business_cases")
-        .select("id, case_number, contract_amount, currency")
-        .ilike("case_number", caseNumber)
-        .maybeSingle();
-
-      if (!bc) {
-        return { answer: `Business case ${caseNumber} was not found.`, error: null };
-      }
-
-      const [invoices, expenses] = await Promise.all([
-        supabase
-          .from("invoices")
-          .select("amount, invoice_type, status")
-          .eq("business_case_id", bc.id),
-        supabase
-          .from("expenses")
-          .select("amount, status")
-          .eq("business_case_id", bc.id),
-      ]);
-
-      const revenue = (invoices.data ?? [])
-        .filter((item) => item.status !== "Cancelled")
-        .reduce((sum, item) => {
-          const type = item.invoice_type ?? "Sales Invoice";
-          const amount = toNumber(item.amount);
-          if (type === "Credit Note") return sum - amount;
-          if (type === "Purchase Invoice") return sum;
-          return sum + amount;
-        }, 0);
-
-      const expenseTotal = (expenses.data ?? [])
-        .filter((item) => item.status !== "Cancelled")
-        .reduce((sum, item) => sum + toNumber(item.amount), 0);
-
-      const contractAmount = toNumber(bc.contract_amount);
-      const profit = (revenue || contractAmount) - expenseTotal;
-
+    if (includesAny(q, ["profit", "margin", "p&l"])) {
       return {
-        answer: `Profit summary for ${bc.case_number}:\n• Contract amount: ${contractAmount} ${bc.currency ?? "USD"}\n• Invoice revenue: ${revenue}\n• Expenses: ${expenseTotal}\n• Estimated profit: ${profit}`,
+        answer: "Canonical Deal profitability is not available yet. Review the Deal's operational records for original amounts, currencies and explicit parties. Legacy estimates are not valid profitability results.",
         error: null,
       };
     }

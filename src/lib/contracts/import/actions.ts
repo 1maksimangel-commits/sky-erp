@@ -310,7 +310,7 @@ export async function confirmContractImport(
   }
   const validation = validateContractFormInput(form);
   if (validation) return { success: false, error: validation };
-  const { data: duplicate, error: lookupError } = await supabase.from("contracts").select("id").eq("contract_number", form.contract_number.trim()).maybeSingle();
+  const { data: duplicate, error: lookupError } = await supabase.from("contracts").select("id").eq("company_id", form.company_id).eq("contract_number", form.contract_number.trim()).maybeSingle();
   if (lookupError) return { success: false, error: lookupError.message };
   if (duplicate) return { success: false, error: `Contract number already exists. Open /contracts/${duplicate.id} to review the existing Contract.` };
   // Upgrade only this explicitly reviewed legacy import's source identity.

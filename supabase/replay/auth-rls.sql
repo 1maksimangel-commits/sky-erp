@@ -15,13 +15,14 @@ do $$ declare t record; op text; begin
   for t in select c.oid,c.relname,c.relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind in ('r','p') loop
     perform pg_temp.assert_true(t.relrowsecurity,'RLS disabled: ' || t.relname);
-    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories','warehouse_company_access')
+    -- Immutable prerequisite tables have dedicated actual HTTP fixtures in economics-http.mjs.
+    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories','warehouse_company_access','financial_reporting_snapshots','cost_allocations')
       or exists(select 1 from private_tables where name=t.relname),'Unclassified table: ' || t.relname);
     foreach op in array array['SELECT','INSERT','UPDATE','DELETE'] loop
       perform pg_temp.assert_true(not has_table_privilege('anon',t.oid,op),'Anonymous grant: ' || t.relname || ' ' || op);
       perform pg_temp.assert_true(has_table_privilege('authenticated',t.oid,op),'Missing authenticated grant: ' || t.relname || ' ' || op);
     end loop;
-    if exists(select 1 from private_tables where name=t.relname) then
+    if t.relname in ('financial_reporting_snapshots','cost_allocations') or exists(select 1 from private_tables where name=t.relname) then
       perform pg_temp.assert_true((select count(*)=4 from pg_policies where schemaname='public' and tablename=t.relname
         and roles=array['authenticated']::name[] and cmd in ('SELECT','INSERT','UPDATE','DELETE')),'Missing CRUD policies: ' || t.relname);
     end if;
@@ -347,7 +348,7 @@ begin
   insert into public.activity_log(id,company_id) values (pg_temp.fixture_id(tag,'activity_log'),company);
 end $$;
 create function pg_temp.check_company(tag text, other_tag text) returns void language plpgsql as $$
-declare t text; n integer; payload jsonb; begin
+declare t text; n integer; payload jsonb; insert_columns text; begin
   perform pg_temp.assert_true(not erp_private.is_admin(),'Company Admin must not be global Admin');
   perform pg_temp.assert_true(not public.authorize_permission('companies.write'),'Company Admin must not administer company identities');
   perform pg_temp.assert_true((select count(*)=1 from public.companies),'Company list isolation');
@@ -368,8 +369,12 @@ declare t text; n integer; payload jsonb; begin
     exception when insufficient_privilege then null; end;
     execute format('select to_jsonb(r) from public.%I r where id=$1',t) into payload using pg_temp.fixture_id(tag,t);
     payload := payload || jsonb_build_object('id',gen_random_uuid(),'company_id',pg_temp.fixture_id(other_tag,'companies'));
+    -- Generated ledger values are database-owned, not writable fixture inputs.
+    select string_agg(quote_ident(attname),',' order by attnum) into insert_columns
+      from pg_attribute where attrelid=format('public.%I',t)::regclass
+      and attnum>0 and not attisdropped and attgenerated='';
     begin
-      execute format('insert into public.%I select (jsonb_populate_record(null::public.%I,$1)).*',t,t) using payload;
+      execute format('insert into public.%I (%s) select %s from jsonb_populate_record(null::public.%I,$1)',t,insert_columns,insert_columns,t) using payload;
       raise exception 'Cross-company INSERT accepted: %',t;
     exception when insufficient_privilege then null; end;
   end loop;

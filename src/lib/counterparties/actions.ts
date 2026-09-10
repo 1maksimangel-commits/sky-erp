@@ -75,26 +75,30 @@ export async function addCompanyAsCounterparty(companyId: string): Promise<Creat
   try {
     const denied = await assertCan("counterparties.write");
     if (denied) return { success: false, error: denied };
-    await requireCoreCompany(companyId);
+    // source_company_id is the ownership parent under the canonical Phase 2
+    // trigger. This profile belongs to the represented Company, not active UI scope.
+    const ownerId = await requireCoreCompany(companyId);
     const supabase = await createClient();
     const { data: company, error: companyError } = await getCompanyById(companyId);
     if (companyError || !company) return { success: false, error: companyError ?? "Company not found." };
     const bank = Array.isArray(company.bank_accounts) ? company.bank_accounts[0] : null;
-    const existing = await supabase.from("counterparties").select("id").eq("source_company_id", companyId).maybeSingle();
+    const existing = await supabase.from("counterparties").select("id, code").eq("company_id", ownerId).eq("source_company_id", companyId).maybeSingle();
+    if (existing.error) return { success: false, error: existing.error.message };
     // If the link was removed earlier, reuse the old row by its company code
     // instead of inserting a second row with the same unique code.
-    const codeMatch = !existing.data?.id && company.code
-      ? await supabase.from("counterparties").select("id, source_company_id, legal_name").eq("code", company.code).maybeSingle()
-      : { data: null };
-    const reusable = codeMatch.data && !codeMatch.data.source_company_id && codeMatch.data.legal_name === company.name
+    const codeMatch = company.code
+      ? await supabase.from("counterparties").select("id, source_company_id, legal_name").eq("company_id", ownerId).eq("code", company.code).maybeSingle()
+      : { data: null, error: null };
+    if (codeMatch.error) return { success: false, error: codeMatch.error.message };
+    const reusable = !existing.data && codeMatch.data && !codeMatch.data.source_company_id && codeMatch.data.legal_name === company.name
       ? codeMatch.data
       : null;
-    const profile = { code: company.code && (!codeMatch.data || reusable) ? company.code : null, legal_name: company.name, short_name: company.short_name, counterparty_type: "buyer", country: company.country, city: company.city, address: company.address, tax_id: company.tax_id, registration_number: company.registration_number, email: company.email, phone: company.phone, website: company.website, authorized_signer_name: company.authorized_signer_name, authorized_signer_title: company.authorized_signer_title, bank_account_name: bank?.name ?? null, bank_name: bank?.bank_name ?? null, bank_address: bank?.bank_address ?? null, account_number: bank?.account_number ?? null, iban: bank?.iban ?? null, swift: bank?.swift ?? null, bank_currency: bank?.currency ?? "USD", is_active: true };
+    const profile = { code: company.code && (!codeMatch.data || reusable || codeMatch.data.id === existing.data?.id) ? company.code : existing.data?.code ?? null, legal_name: company.name, short_name: company.short_name, counterparty_type: "buyer", country: company.country, city: company.city, address: company.address, tax_id: company.tax_id, registration_number: company.registration_number, email: company.email, phone: company.phone, website: company.website, authorized_signer_name: company.authorized_signer_name, authorized_signer_title: company.authorized_signer_title, bank_account_name: bank?.name ?? null, bank_name: bank?.bank_name ?? null, bank_address: bank?.bank_address ?? null, account_number: bank?.account_number ?? null, iban: bank?.iban ?? null, swift: bank?.swift ?? null, bank_currency: bank?.currency ?? "USD", is_active: true };
     const result = existing.data?.id
-      ? await supabase.from("counterparties").update(profile).eq("id", existing.data.id).select("id").single()
+      ? await supabase.from("counterparties").update(profile).eq("company_id", ownerId).eq("id", existing.data.id).select("id").single()
       : reusable
-        ? await supabase.from("counterparties").update({ source_company_id: company.id, ...profile }).eq("id", reusable.id).select("id").single()
-      : await supabase.from("counterparties").insert({ source_company_id: company.id, ...profile }).select("id").single();
+        ? await supabase.from("counterparties").update({ source_company_id: company.id, ...profile }).eq("company_id", ownerId).eq("id", reusable.id).select("id").single()
+      : await supabase.from("counterparties").insert({ company_id: ownerId, source_company_id: company.id, ...profile }).select("id").single();
     const { data, error } = result;
     if (error) return { success: false, error: error.message };
     revalidatePath("/companies"); revalidatePath("/counterparties"); revalidatePath("/contracts");
@@ -181,6 +185,7 @@ export async function createCounterparty(
         .from("counterparties")
         .select("id")
         .eq("code", code)
+        .eq("company_id", companyId)
         .maybeSingle();
 
       if (lookupError) {

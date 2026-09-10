@@ -101,6 +101,7 @@ Redirect stubs (not canonical content) also exist at former paths under `knowled
 | `Development/CoreDomain.md` | Canonical core entities, CRUD/archive behavior, Deal product lines and isolated core regression gate |
 | `Development/DocumentGeneration.md` | Canonical templates, reviewed DOCX generation, immutable output versions and Phase 5 regression gate |
 | `Development/OperationalTransactions.md` | Company-owned shipment/inventory/financial records, canonical traceability and Phase 6 replay gate |
+| `Development/EconomicsPrerequisites.md` | Verified audit findings, immutable FX inputs, owned-lot cost basis and explicit allocations before Phase 7 profitability |
 | `Development/Performance.md` | Performance guidance |
 | `Roadmap/Current.md` | What exists now |
 | `Roadmap/Future.md` | Planned work |

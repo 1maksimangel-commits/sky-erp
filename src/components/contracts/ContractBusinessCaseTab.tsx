@@ -9,12 +9,10 @@ import { createBusinessCaseForContract } from "@/lib/contracts/hub-actions";
 import type { Contract } from "@/lib/contracts/db";
 import type { LinkedBusinessCase } from "@/lib/contracts/relations";
 import { formatContractAmount } from "@/lib/contracts/format";
-import type { BusinessCaseProfitResult } from "@/lib/finance/db";
 
 type ContractBusinessCaseTabProps = {
   contract: Contract;
   businessCase: LinkedBusinessCase | null;
-  profit: BusinessCaseProfitResult | null;
   loadError: string | null;
 };
 
@@ -30,7 +28,6 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 export function ContractBusinessCaseTab({
   contract,
   businessCase,
-  profit,
   loadError,
 }: ContractBusinessCaseTabProps) {
   const router = useRouter();
@@ -127,15 +124,13 @@ export function ContractBusinessCaseTab({
     );
   }
 
-  const currency = profit?.currency ?? businessCase.currency;
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-sm font-medium text-foreground">Business Case</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Linked via contracts.business_case_id (with contract-number fallback)
+            Linked to this Contract through its canonical Deal reference.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -174,22 +169,6 @@ export function ContractBusinessCaseTab({
             businessCase.contract_amount,
             businessCase.currency
           )}
-        />
-        <DetailItem
-          label="Revenue (invoices)"
-          value={formatContractAmount(profit?.revenue ?? 0, currency)}
-        />
-        <DetailItem
-          label="Expenses"
-          value={formatContractAmount(profit?.expenses ?? 0, currency)}
-        />
-        <DetailItem
-          label="Profit result"
-          value={formatContractAmount(profit?.profit ?? 0, currency)}
-        />
-        <DetailItem
-          label="Invoices / Payments"
-          value={`${profit?.invoiceCount ?? 0} / ${profit?.paymentCount ?? 0}`}
         />
       </div>
 

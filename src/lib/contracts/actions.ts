@@ -92,6 +92,7 @@ function formInputToRow(
 
 async function assertUniqueContractNumber(
   contractNumber: string,
+  companyId: string | null,
   excludeId?: string
 ): Promise<ContractActionResult | null> {
   const supabase = await createClient();
@@ -99,6 +100,7 @@ async function assertUniqueContractNumber(
   let query = supabase
     .from("contracts")
     .select("id")
+    .eq("company_id", companyId ?? "")
     .eq("contract_number", contractNumber)
     .limit(1);
 
@@ -150,7 +152,7 @@ export async function createContract(
   }
 
   const contractNumber = input.contract_number.trim();
-  const uniquenessError = await assertUniqueContractNumber(contractNumber);
+  const uniquenessError = await assertUniqueContractNumber(contractNumber, input.company_id);
   if (uniquenessError) {
     return uniquenessError;
   }
@@ -212,7 +214,7 @@ export async function updateContract(
   }
 
   const contractNumber = input.contract_number.trim();
-  const uniquenessError = await assertUniqueContractNumber(contractNumber, id);
+  const uniquenessError = await assertUniqueContractNumber(contractNumber, input.company_id, id);
   if (uniquenessError) {
     return uniquenessError;
   }
