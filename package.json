@@ -15,6 +15,7 @@
     "documents:check": "node --test scripts/database/documents-engine.test.mjs scripts/database/auth-security.test.mjs && node scripts/database/replay.mjs",
     "operations:check": "node --test scripts/database/auth-security.test.mjs && node scripts/database/replay.mjs",
     "economics:precheck": "node --test scripts/database/auth-security.test.mjs scripts/database/finance-decimal.test.mjs scripts/database/economics-isolation.test.mjs && node scripts/database/replay.mjs",
+    "profitability:check": "node --test scripts/database/auth-security.test.mjs scripts/database/profitability.test.mjs scripts/database/economics-isolation.test.mjs && node scripts/database/replay.mjs",
     "db:test": "node --test scripts/database/compare.test.mjs",
     "auth:test": "node --test scripts/database/auth-security.test.mjs",
     "auth:bundle": "node scripts/database/auth-security.test.mjs --bundle"

@@ -48,6 +48,6 @@
   "reviewedSources": {
     "src/lib/logistics/db.ts": "77c945e55337a41dcab53fea28f7edfbfc5af9d03bdb4e2bfc78c3b787dca3a4",
     "src/lib/documents/db.ts": "4f1bd7c573b5ca0ab7ca0059b79a210368badb2c9e4e438a01d1e64497811445",
-    "src/lib/platform/ai.ts": "c96cdd260a1c5aeced433de774c964926181c96f878b292c7a87a0323b64bb5d"
+    "src/lib/platform/ai.ts": "50e7caa296ba3ce34f4d3c054de6f6f59072ff5c654e2fed64dfcb5672963c35"
   }
 }

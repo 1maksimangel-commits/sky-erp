@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getActiveCompanyId } from "@/lib/platform/company-scope";
-import { buildExpectedFinanceSummary } from "@/lib/deals/validation";
-import type { CurrencyAmount, Deal, DealContract, DealParticipant, DealProduct, DealShipment, DealWorkspaceData } from "@/lib/deals/types";
+import type { Deal, DealContract, DealParticipant, DealProduct, DealShipment, DealWorkspaceData } from "@/lib/deals/types";
 
 type Relation = { id?: string; name?: string; legal_name?: string; sku?: string; scientific_name?: string } | Array<{ id?: string; name?: string; legal_name?: string; sku?: string; scientific_name?: string }> | null;
 function firstRelation(value: Relation) { return Array.isArray(value) ? value[0] ?? null : value; }
@@ -173,33 +172,26 @@ async function loadShipments(dealId: string): Promise<{ data: DealShipment[]; wa
   return { data: (data ?? []) as DealShipment[], warning: null };
 }
 
+// Commission money belongs to the canonical profitability engine. The Deal
+// workspace only needs to know whether commission records exist.
 async function loadCommissions(dealId: string): Promise<{
-  amounts: CurrencyAmount[];
   count: number;
   warning: string | null;
 }> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("deal_commission_links")
-    .select("expected_amount, currency")
+    .select("id")
     .eq("business_case_id", dealId);
   if (error) {
     return {
-      amounts: [],
       count: 0,
       warning: isMissingCanonicalSchema(error.message)
         ? "Commission links are reserved by the Sprint 1 migration."
         : error.message,
     };
   }
-  return {
-    amounts: (data ?? []).map((item) => ({
-      amount: numberOrNull(item.expected_amount) ?? 0,
-      currency: item.currency ?? "",
-    })),
-    count: data?.length ?? 0,
-    warning: null,
-  };
+  return { count: data?.length ?? 0, warning: null };
 }
 
 export async function getDealWorkspaceData(
@@ -233,19 +225,6 @@ export async function getDealWorkspaceData(
       shipments: shipments.data,
       commissionsCount: commissions.count,
       schemaWarnings: [...new Set(warnings)],
-      finance: buildExpectedFinanceSummary({
-        products: products.data,
-        linkedContracts: contracts.data,
-        purchaseValue: deal.purchase_value,
-        purchaseCurrency: deal.purchase_currency,
-        salesValue: deal.sales_value,
-        salesCurrency: deal.sales_currency,
-        expectedExpenses: deal.expected_expenses,
-        expectedExpensesCurrency: deal.expected_expenses_currency,
-        expectedCommission: deal.expected_commission,
-        expectedCommissionCurrency: deal.expected_commission_currency,
-        linkedCommissions: commissions.amounts,
-      }),
     },
     error: null,
   };

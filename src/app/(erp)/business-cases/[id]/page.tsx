@@ -5,13 +5,17 @@ import { getDealWorkspaceData } from "@/lib/deals/db";
 import { getEntityWorkspaceBundle } from "@/lib/platform/entity-bundle";
 import { getProducts } from "@/lib/products";
 import { OperationalRecords } from "@/components/operations/OperationalRecords";
+import { DealEconomics } from "@/components/economics/DealEconomics";
 
 export default async function BusinessCaseDetailPage({
   params,
+  searchParams,
 }: Readonly<{
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ tab?: string }>;
 }>) {
   const { id } = await params;
+  const initialTab = (await searchParams)?.tab === "economics" ? "economics" : "overview";
   const [dealResult, bundle, counterpartiesResult, productsResult] =
     await Promise.all([
       getDealWorkspaceData(id),
@@ -29,7 +33,11 @@ export default async function BusinessCaseDetailPage({
 
   return (
     <DealWorkspace
+      initialTab={initialTab}
       operations={<OperationalRecords source={{ dealId: id }} />}
+      economics={initialTab === "economics" ? <DealEconomics dealId={id} companyId={dealResult.data.deal.company_id}
+        contracts={dealResult.data.contracts.map(contract => ({ id: contract.id, label: contract.contract_number }))}
+        dealLines={dealResult.data.products.map(product => ({ id: product.id, label: product.product_name ?? product.product_description ?? "Deal product" }))} /> : null}
       data={dealResult.data}
       timeline={bundle.timeline}
       activity={bundle.activity}

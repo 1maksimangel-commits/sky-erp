@@ -15,14 +15,14 @@ do $$ declare t record; op text; begin
   for t in select c.oid,c.relname,c.relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind in ('r','p') loop
     perform pg_temp.assert_true(t.relrowsecurity,'RLS disabled: ' || t.relname);
-    -- Immutable prerequisite tables have dedicated actual HTTP fixtures in economics-http.mjs.
-    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories','warehouse_company_access','financial_reporting_snapshots','cost_allocations')
+    -- Immutable economics/recognition tables have dedicated authenticated HTTP fixtures.
+    perform pg_temp.assert_true(t.relname in ('companies','company_memberships','user_profiles','roles','currencies','exchange_rates','expense_categories','warehouse_company_access','financial_reporting_snapshots','cost_allocations','sale_realizations','intercompany_inventory_links')
       or exists(select 1 from private_tables where name=t.relname),'Unclassified table: ' || t.relname);
     foreach op in array array['SELECT','INSERT','UPDATE','DELETE'] loop
       perform pg_temp.assert_true(not has_table_privilege('anon',t.oid,op),'Anonymous grant: ' || t.relname || ' ' || op);
       perform pg_temp.assert_true(has_table_privilege('authenticated',t.oid,op),'Missing authenticated grant: ' || t.relname || ' ' || op);
     end loop;
-    if t.relname in ('financial_reporting_snapshots','cost_allocations') or exists(select 1 from private_tables where name=t.relname) then
+    if t.relname in ('financial_reporting_snapshots','cost_allocations','sale_realizations','intercompany_inventory_links') or exists(select 1 from private_tables where name=t.relname) then
       perform pg_temp.assert_true((select count(*)=4 from pg_policies where schemaname='public' and tablename=t.relname
         and roles=array['authenticated']::name[] and cmd in ('SELECT','INSERT','UPDATE','DELETE')),'Missing CRUD policies: ' || t.relname);
     end if;

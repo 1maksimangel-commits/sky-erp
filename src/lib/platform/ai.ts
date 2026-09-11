@@ -123,7 +123,7 @@ export async function askErpAssistant(
 
     if (includesAny(q, ["profit", "margin", "p&l"])) {
       return {
-        answer: "Canonical Deal profitability is not available yet. Review the Deal's operational records for original amounts, currencies and explicit parties. Legacy estimates are not valid profitability results.",
+        answer: "Canonical Deal profitability is calculated by the Deal Economics tab. Open the Deal and select Economics for company, consolidated, expected, actual and cash results with their source evidence. This assistant does not calculate profit, and legacy estimates are not valid profitability results.",
         error: null,
       };
     }

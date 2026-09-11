@@ -10,6 +10,7 @@ const decimal = z.string().regex(/^\d+(?:\.\d{1,12})?$/, "Enter an exact positiv
 const snapshotSchema = z.object({
   company_id: id, invoice_id: optionalId, payment_id: optionalId,
   expense_id: optionalId, commission_id: optionalId, bank_transaction_id: optionalId,
+  contract_id: optionalId, stock_movement_id: optionalId,
   reporting_currency: z.string().regex(/^[A-Z]{3}$/), reporting_date: z.string().date(),
   exchange_rate_id: optionalId,
 });

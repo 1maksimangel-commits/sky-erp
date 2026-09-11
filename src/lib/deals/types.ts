@@ -120,25 +120,12 @@ export type DealShipment = {
   status: string | null;
 };
 
-export type CurrencyAmount = { currency: string; amount: number };
-
-export type DealFinanceSummary = {
-  purchase: CurrencyAmount[];
-  sales: CurrencyAmount[];
-  expenses: CurrencyAmount[];
-  commissions: CurrencyAmount[];
-  expectedProfit: CurrencyAmount | null;
-  profitIncomplete: boolean;
-  incompleteReason: string | null;
-};
-
 export type DealWorkspaceData = {
   deal: Deal;
   participants: DealParticipant[];
   products: DealProduct[];
   contracts: DealContract[];
   shipments: DealShipment[];
-  finance: DealFinanceSummary;
   commissionsCount: number;
   schemaWarnings: string[];
 };

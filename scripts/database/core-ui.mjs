@@ -87,6 +87,7 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         ['/companies', 'SKY TEST'], ['/counterparties', 'PACIFIC TEST SEAFOOD'], ['/products', 'Pacific Cod'], ['/business-cases', 'Updated fictional Deal'],
         [`/companies/${fixture.company}`, 'SKY TEST'], [`/counterparties/${fixture.parties[0]}`, 'PACIFIC TEST SEAFOOD'],
         [`/products/${fixture.products[0]}`, 'Pacific Cod'], [`/business-cases/${fixture.deal}`, 'Updated fictional Deal'],
+        [`/business-cases/${fixture.deal}?tab=economics`, 'Company perspective'],
         ['/counterparties?new=1', 'New Counterparty'], ['/products?new=1', 'New Product'], ['/business-cases?new=1', 'New Deal'],
       ];
       for (const [route, marker] of ownRoutes) {
@@ -94,6 +95,11 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         const response = await request(route, { headers: { cookie }, redirect: 'manual', signal: AbortSignal.timeout(90000) });
         const html = await response.text();
         check(response.status === 200 && html.includes(marker), `${fixture.user.tag} ${route}`);
+        // The canonical profitability report is heavy: it must render only when the
+        // Economics tab is actually requested, never on an ordinary Deal view.
+        if (/^\/business-cases\/[0-9a-f-]{36}$/.test(route)) {
+          check(!html.includes('Company perspective'), `${route} does not eagerly render Deal economics`);
+        }
         check(!/permission denied for table|column [^<]* does not exist|Could not find[^<]*(?:schema cache|relationship)|Failed to load (?:companies|counterparties|products|business cases)|Unable to load operational records|schema is incomplete/i.test(html), `${route} schema/permission compatibility`);
       }
       const foreign = fixtures.find(row => row.company !== fixture.company);

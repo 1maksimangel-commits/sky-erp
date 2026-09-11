@@ -1,0 +1,21 @@
+export type EconomicContract = { id: string; company_id: string; contract_number: string; status: string; currency: string; parties_reviewed: boolean; party_alias_conflict: boolean; seller_company_id: string | null; buyer_company_id: string | null };
+export type EconomicContractLine = { id: string; contract_id: string; product_id: string | null; description: string; quantity: string; unit_price: string | null; agreed_amount: string | null; currency: string | null; unit: string | null };
+export type EconomicInvoice = { id: string; company_id: string; contract_id: string; invoice_number: string; currency: string; status: string; issuer_company_id: string | null; recipient_company_id: string | null; amount: string; subtotal: string; outstanding: string };
+export type EconomicInvoiceLine = { id: string; invoice_id: string; product_id: string | null; description: string; quantity: string; unit_price: string; unit: string | null };
+export type EconomicPayment = { id: string; company_id: string; business_case_id: string | null; payer_company_id: string | null; payee_company_id: string | null; party_alias_conflict: boolean; currency: string; amount: string; status: string };
+export type EconomicPaymentAllocation = { id: string; payment_id: string; invoice_id: string | null; commission_id: string | null; amount: string };
+export type EconomicCost = { id: string; company_id: string; business_case_id: string | null; contract_id: string | null; currency: string; amount: string; status: string; category: string; description: string; internal_beneficiary: boolean };
+export type EconomicAllocation = { id: string; company_id: string; business_case_id: string | null; expense_id: string | null; commission_id: string | null; product_id: string | null; contract_product_id: string | null; deal_product_id: string | null; amount: string; currency: string };
+export type EconomicSnapshot = { id: string; company_id: string; source_kind: string; source_id: string; reporting_currency: string; original_currency: string; original_amount: string; fx_rate: string; fx_rate_date: string; reporting_date: string };
+export type EconomicRealization = { realization_id: string; company_id: string; invoice_id: string; invoice_item_id: string; contract_id: string; contract_product_id: string | null; product_id: string | null; stock_movement_id: string; quantity: string; unit: string; invoice_status: string; acquisition_internal: boolean | null; acquisition_seller_company_id: string | null; local_unit_cost: string | null; local_currency: string | null; local_fx_rate: string | null; local_snapshot_id: string | null; ultimate_unit_cost: string | null; ultimate_currency: string | null; ultimate_fx_rate: string | null; ultimate_snapshot_id: string | null; ultimate_source_movement_id: string | null; ultimate_company_id: string | null; lineage_gap: boolean; fx_gap: boolean; source_ids: string[] };
+export type EconomicCommissionInput = { id: string; company_id: string; business_case_id: string; contract_id: string | null; beneficiary_name: string | null; beneficiary_type: string | null; basis: string; rate: string; currency: string; expected_amount: string; paid_amount: string; outstanding_amount: string; status: string; basis_changed: boolean; is_agent: boolean; root_id: string; is_current: boolean };
+export type ProfitabilityInputs = {
+  deal_id: string; reporting_currency: string; company_id: string | null;
+  companies: { id: string; name: string }[]; contracts: EconomicContract[];
+  contract_lines: EconomicContractLine[]; invoices: EconomicInvoice[]; invoice_lines: EconomicInvoiceLine[];
+  payments: EconomicPayment[]; payment_allocations: EconomicPaymentAllocation[];
+  expenses: EconomicCost[]; allocations: EconomicAllocation[]; snapshots: EconomicSnapshot[];
+  realizations: EconomicRealization[]; commissions: EconomicCommissionInput[];
+  products: { id: string; name: string }[]; deal_lines: { id: string; product_id: string | null }[];
+  internal_commission_ids: string[];
+};

@@ -17,13 +17,14 @@ import { lineAmount } from "@/lib/core/validation";
 import { updateDealProduct, removeDealProduct, addDealParticipant, addDealProduct, classifyDealContract, updateDeal } from "@/lib/deals/actions";
 import { DEAL_CONTRACT_ROLES, DEAL_PARTICIPANT_ROLES, DEAL_STATUSES, type DealFormInput, type DealWorkspaceData } from "@/lib/deals/types";
 
-type Tab = "overview" | "participants" | "products" | "contracts" | "documents" | "logistics" | "operations" | "history";
+type Tab = "overview" | "participants" | "products" | "contracts" | "documents" | "logistics" | "operations" | "economics" | "history";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" }, { id: "participants", label: "Participants" },
   { id: "products", label: "Products" }, { id: "contracts", label: "Contracts" },
   { id: "documents", label: "Documents" }, { id: "logistics", label: "Logistics" },
   { id: "history", label: "History" },
   { id: "operations", label: "Operations" },
+  { id: "economics", label: "Economics" },
 ];
 const inputClass = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring";
 
@@ -109,8 +110,15 @@ function Logistics({ data }: { data: DealWorkspaceData }) {
   return <div className="space-y-3"><div className="flex justify-end"><Link href="/logistics?new=1" className="rounded-md bg-foreground px-3.5 py-2 text-xs font-medium text-background">Create shipment</Link></div>{data.shipments.map((item) => <Link key={item.id} href={`/logistics/${item.id}`} className="grid gap-3 rounded-lg border border-card-border bg-card p-4 hover:bg-accent/20 sm:grid-cols-5"><span>{item.container ?? "No container"}</span><span>B/L {item.bl_number ?? "—"}</span><span>{item.vessel ?? "—"}</span><span>ETA {item.eta ?? "—"}</span><span>{item.status ?? "—"}</span></Link>)}{!data.shipments.length ? <p className="rounded-lg border border-card-border bg-card p-8 text-center text-sm text-muted-foreground">No shipments linked.</p> : null}</div>;
 }
 
-export function DealWorkspace({ data, documents, documentUrls, timeline, activity, counterparties, products, operations }: { data: DealWorkspaceData; documents: ErpDocument[]; documentUrls: Record<string, string>; timeline: TimelineEvent[]; activity: ActivityEntry[]; counterparties: Counterparty[]; products: Product[]; operations: React.ReactNode }) {
-  const [tab, setTab] = useState<Tab>("overview");
+export function DealWorkspace({ data, documents, documentUrls, timeline, activity, counterparties, products, operations, economics, initialTab = "overview" }: { data: DealWorkspaceData; documents: ErpDocument[]; documentUrls: Record<string, string>; timeline: TimelineEvent[]; activity: ActivityEntry[]; counterparties: Counterparty[]; products: Product[]; operations: React.ReactNode; economics: React.ReactNode; initialTab?: "overview" | "economics" }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const workspaceRouter = useRouter();
+  // Economics is a heavy server report. It is not rendered on every Deal view;
+  // opening the tab requests it once, and the ?tab=economics link still works.
+  const openTab = (next: Tab) => {
+    setTab(next);
+    if (next === "economics" && !economics) workspaceRouter.replace(`/business-cases/${data.deal.id}?tab=economics`, { scroll: false });
+  };
   let content: React.ReactNode;
   if (tab === "overview") content = <DealOverview data={data} />;
   else if (tab === "participants") content = <Participants data={data} counterparties={counterparties} />;
@@ -119,6 +127,7 @@ export function DealWorkspace({ data, documents, documentUrls, timeline, activit
   else if (tab === "documents") content = <EntityDocumentsPanel entityType="business_case" entityId={data.deal.id} documents={documents} urls={documentUrls} businessCaseId={data.deal.id} companyId={data.deal.company_id} />;
   else if (tab === "logistics") content = <Logistics data={data} />;
   else if (tab === "operations") content = operations;
+  else if (tab === "economics") content = economics ?? <p role="status" className="rounded-lg border border-card-border bg-card p-8 text-center text-sm text-muted-foreground">Loading Deal economics…</p>;
   else content = <div className="grid gap-5 xl:grid-cols-2"><EntityTimelinePanel entityType="business_case" entityId={data.deal.id} events={timeline} /><EntityActivityPanel entries={activity} /></div>;
-  return <div className="space-y-6"><nav className="text-sm"><Link href="/business-cases" className="text-muted-foreground hover:text-foreground">Deals</Link><span className="mx-2 text-muted-foreground">/</span><span className="font-mono text-xs">{data.deal.case_number}</span></nav><div><div className="flex items-center gap-3"><h2 className="font-mono text-lg font-semibold">{data.deal.case_number}</h2><span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-zinc-500/20">{data.deal.status ?? "Draft"}</span></div><p className="mt-1 text-sm text-muted-foreground">{data.deal.title ?? "Canonical Deal"}</p></div>{data.schemaWarnings.length ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4"><p className="text-sm font-medium text-amber-200">Compatibility mode</p><ul className="mt-2 list-disc pl-5 text-xs text-amber-100/80">{data.schemaWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}<div className="flex flex-wrap gap-1 border-b border-border pb-3">{TABS.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60"}`}>{item.label}</button>)}</div>{content}</div>;
+  return <div className="space-y-6"><nav className="text-sm"><Link href="/business-cases" className="text-muted-foreground hover:text-foreground">Deals</Link><span className="mx-2 text-muted-foreground">/</span><span className="font-mono text-xs">{data.deal.case_number}</span></nav><div><div className="flex items-center gap-3"><h2 className="font-mono text-lg font-semibold">{data.deal.case_number}</h2><span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-zinc-500/20">{data.deal.status ?? "Draft"}</span></div><p className="mt-1 text-sm text-muted-foreground">{data.deal.title ?? "Canonical Deal"}</p></div>{data.schemaWarnings.length ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4"><p className="text-sm font-medium text-amber-200">Compatibility mode</p><ul className="mt-2 list-disc pl-5 text-xs text-amber-100/80">{data.schemaWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}<div className="flex flex-wrap gap-1 border-b border-border pb-3">{TABS.map((item) => <button key={item.id} type="button" onClick={() => openTab(item.id)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60"}`}>{item.label}</button>)}</div>{content}</div>;
 }
