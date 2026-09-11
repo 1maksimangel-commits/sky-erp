@@ -16,6 +16,7 @@
     "operations:check": "node --test scripts/database/auth-security.test.mjs && node scripts/database/replay.mjs",
     "economics:precheck": "node --test scripts/database/auth-security.test.mjs scripts/database/finance-decimal.test.mjs scripts/database/economics-isolation.test.mjs && node scripts/database/replay.mjs",
     "profitability:check": "node --test scripts/database/auth-security.test.mjs scripts/database/profitability.test.mjs scripts/database/economics-isolation.test.mjs && node scripts/database/replay.mjs",
+    "e2e:business": "node --test scripts/database/profitability.test.mjs && node scripts/database/replay.mjs",
     "release:check": "node --test scripts/database/auth-security.test.mjs scripts/database/profitability.test.mjs scripts/database/economics-isolation.test.mjs scripts/database/finance-decimal.test.mjs scripts/database/release-readiness.test.mjs && node scripts/database/check.mjs && node scripts/database/replay.mjs",
     "db:test": "node --test scripts/database/compare.test.mjs",
     "auth:test": "node --test scripts/database/auth-security.test.mjs",
