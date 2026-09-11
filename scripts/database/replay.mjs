@@ -13,6 +13,7 @@ import { verifyDocumentsHttp } from './documents-http.mjs';
 import { verifyOperationsHttp } from './operations-http.mjs';
 import { verifyEconomicsHttp } from './economics-http.mjs';
 import { verifyProfitabilityHttp } from './profitability-http.mjs';
+import { verifyReleaseE2eHttp } from './release-e2e-http.mjs';
 
 // No connection-string, project-ref, workdir, or remote-target arguments accepted.
 // Only this process's newly created, randomly named local Supabase is reachable.
@@ -88,6 +89,10 @@ try {
   await sql(fs.readFileSync('supabase/replay/schema-smoke.sql', 'utf8'));
   await sql(fs.readFileSync('supabase/replay/auth-rls.sql', 'utf8'));
   console.log('Auth/RLS: table grants, company isolation, authenticated CRUD, RPCs, Admin, readonly, disabled and anon assertions passed.');
+  const indexInventory = JSON.parse(await sql("select coalesce(json_agg(json_build_object('table',tablename,'index',indexname) order by tablename,indexname),'[]') from pg_indexes where schemaname='public';"));
+  fs.writeFileSync(path.join(workdir, 'index-inventory.json'), JSON.stringify(indexInventory, null, 2));
+  await sql(fs.readFileSync('supabase/replay/release-readiness.sql', 'utf8'));
+  console.log(`Release readiness: primary keys, RLS with policies, validated foreign keys, ${indexInventory.length} reconstructed indexes, private Storage policies and server-only canonical RPCs passed.`);
   const localStatus = JSON.parse(await run('supabase', ['status', '--output', 'json', '--workdir', workdir], undefined, true));
   await verifyAuthHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   const core = await verifyCoreHttp({ sql, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
@@ -96,12 +101,13 @@ try {
   await verifyOperationsHttp({ ...core, sql });
   await verifyEconomicsHttp({ ...core, sql });
   await verifyProfitabilityHttp({ ...core, sql });
+  await verifyReleaseE2eHttp({ ...core, sql });
   await verifyCoreUi({ ...core, publicKey: localStatus.ANON_KEY ?? localStatus.PUBLISHABLE_KEY ?? '' });
   verifiedResult = {
     status: 'PASS', cli: version, migrations: migrations.map(m => ({ name: m.name, sha256: sha256(m.sql) })),
     tablesChecked: contract.tables.length, selectsChecked: contract.selects.length,
     columnUsesChecked: contract.columns.length, rpcNamesChecked: [...new Set(contract.rpcs.map(r => r.name))],
-    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS', coreCrudTests: 'PASS', coreUiHttpTests: 'PASS', contractsFunctionalTests: 'PASS', documentsFunctionalTests: 'PASS', operationsFunctionalTests: 'PASS', economicsPrerequisites: 'PASS', profitability: 'PASS',
+    schemaSmoke: 'PASS', authRlsFunctionalTests: 'PASS', authHttpTests: 'PASS', coreCrudTests: 'PASS', coreUiHttpTests: 'PASS', contractsFunctionalTests: 'PASS', documentsFunctionalTests: 'PASS', operationsFunctionalTests: 'PASS', economicsPrerequisites: 'PASS', profitability: 'PASS', releaseReadiness: 'PASS', releaseE2e: 'PASS',
   };
 } catch (error) {
   console.error(error.message);

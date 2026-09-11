@@ -75,6 +75,7 @@ export async function verifyCoreUi({ publicKey, users, fixtures }) {
         ['/warehouse', 'Warehouse'], ['/logistics', 'Logistics'], ['/finance', 'Finance'], ['/crm', 'CRM'],
         ['/finance/invoices', 'Invoices'], ['/finance/payments', 'Payments'], ['/finance/bank-accounts', 'Bank Accounts'], ['/finance/exchange-rates', 'Exchange Rates'],
         ['/finance/expenses', 'Expenses'], ['/finance/commissions', 'Commissions'],
+        ['/finance/reports', 'Accounts Receivable'], ['/reports', 'Enterprise reports'],
         ...(fixture.shipmentId ? [[`/logistics/${fixture.shipmentId}`, 'Shipment']] : []),
         ...(fixture.invoiceId ? [[`/finance/invoices/${fixture.invoiceId}`, 'Invoice']] : []),
         ...(fixture.paymentId ? [[`/finance/payments/${fixture.paymentId}`, 'Payment']] : []),
